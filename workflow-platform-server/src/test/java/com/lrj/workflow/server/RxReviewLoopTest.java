@@ -43,7 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.flyway.baseline-on-migrate=true",
         "spring.flyway.baseline-version=0",
         "spring.kafka.listener.auto-startup=false",
-        "workflow.jobs.enabled=false"
+        "workflow.jobs.enabled=false",
+        "workflow.pilot.auto-deploy=false"
 })
 class RxReviewLoopTest {
 

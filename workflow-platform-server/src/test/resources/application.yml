@@ -21,7 +21,9 @@ flowable:
   async-executor-activate: false
   check-process-definitions: false
 
-# H2 spike 测试不需要 Kafka 监听与 outbox/correlation 定时作业(否则空跑报 wf_ 表不存在)
+# H2 spike 测试不需要 Kafka 监听、outbox/correlation 定时作业、试点 BPMN 自动部署(测试自行部署)
 workflow:
   jobs:
     enabled: false
+  pilot:
+    auto-deploy: false
