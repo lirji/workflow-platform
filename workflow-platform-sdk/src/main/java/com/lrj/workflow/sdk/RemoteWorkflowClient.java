@@ -43,4 +43,20 @@ public class RemoteWorkflowClient implements WorkflowClient {
                 .body(Map.class);
         return resp == null ? null : (String) resp.get("actionId");
     }
+
+    @Override
+    public void claimTask(String tenant, String taskId, String userId) {
+        http.post().uri(uri -> uri.path("/api/v1/tasks/{taskId}/claim").queryParam("userId", userId).build(taskId))
+                .header("X-Workflow-Tenant", tenant)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    @Override
+    public void reassignTask(String tenant, String taskId, String assignee) {
+        http.post().uri(uri -> uri.path("/api/v1/tasks/{taskId}/reassign").queryParam("assignee", assignee).build(taskId))
+                .header("X-Workflow-Tenant", tenant)
+                .retrieve()
+                .toBodilessEntity();
+    }
 }

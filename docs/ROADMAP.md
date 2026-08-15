@@ -78,8 +78,8 @@
 - 3.1 接 2~3 个新审批场景(如退费、权限授予),量化"新流程 onboarding"成本
 - 3.2 沉淀流程模板 + 消费方适配脚手架
 
-### 阶段四 · 流程能力增强(P2)
-- 4.1 任务操作 SDK:认领/转办/加签/会签/撤回
+### 阶段四 · 流程能力增强(P2)—— 进行中
+- 4.1 任务操作 ✅(认领/转办/委派/撤回):core TaskApplicationService(租户校验,任务不存在→404)+ REST `/tasks/{id}/{claim,reassign,delegate,unclaim}` + SDK claimTask/reassignTask + 审计。**加签/会签**需 multi-instance BPMN 活动(审方流程无 MI),留待带 MI 的流程模板。
 - 4.2 SLA/超时/定时器升级 + 边界事件
 - 4.3 流程设计器(Option B)
 

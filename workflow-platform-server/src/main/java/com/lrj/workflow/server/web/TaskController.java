@@ -74,4 +74,44 @@ public class TaskController {
         audit.reviewCompleted(effTenant, taskId, req.decision(), actionId, actor);
         return ResponseEntity.accepted().body(Map.of("actionId", actionId, "status", "PENDING_BUSINESS"));
     }
+
+    /** 认领:设办理人。POST /api/v1/tasks/{taskId}/claim?userId= */
+    @PostMapping("/{taskId}/claim")
+    public ResponseEntity<Void> claim(@RequestHeader("X-Workflow-Tenant") String tenant,
+                                      @PathVariable String taskId, @RequestParam String userId) {
+        String t = identity.tenant(tenant);
+        taskApp.claimTask(t, taskId, userId);
+        audit.taskOp(t, "claim", taskId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 转办:改办理人。POST /api/v1/tasks/{taskId}/reassign?assignee= */
+    @PostMapping("/{taskId}/reassign")
+    public ResponseEntity<Void> reassign(@RequestHeader("X-Workflow-Tenant") String tenant,
+                                         @PathVariable String taskId, @RequestParam String assignee) {
+        String t = identity.tenant(tenant);
+        taskApp.reassignTask(t, taskId, assignee);
+        audit.taskOp(t, "reassign", taskId, assignee);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 委派。POST /api/v1/tasks/{taskId}/delegate?userId= */
+    @PostMapping("/{taskId}/delegate")
+    public ResponseEntity<Void> delegate(@RequestHeader("X-Workflow-Tenant") String tenant,
+                                         @PathVariable String taskId, @RequestParam String userId) {
+        String t = identity.tenant(tenant);
+        taskApp.delegateTask(t, taskId, userId);
+        audit.taskOp(t, "delegate", taskId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 撤回认领(回候选池)。POST /api/v1/tasks/{taskId}/unclaim */
+    @PostMapping("/{taskId}/unclaim")
+    public ResponseEntity<Void> unclaim(@RequestHeader("X-Workflow-Tenant") String tenant,
+                                        @PathVariable String taskId) {
+        String t = identity.tenant(tenant);
+        taskApp.unclaimTask(t, taskId);
+        audit.taskOp(t, "unclaim", taskId, null);
+        return ResponseEntity.noContent().build();
+    }
 }

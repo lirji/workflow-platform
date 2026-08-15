@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -64,5 +65,23 @@ class TaskControllerTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.actionId").value("act-123"))
                 .andExpect(jsonPath("$.status").value("PENDING_BUSINESS"));
+    }
+
+    @Test
+    void claimDelegatesToService() throws Exception {
+        mvc.perform(post("/api/v1/tasks/t1/claim")
+                        .header("X-Workflow-Tenant", "his")
+                        .param("userId", "p01"))
+                .andExpect(status().isNoContent());
+        verify(taskApp).claimTask("his", "t1", "p01");
+    }
+
+    @Test
+    void reassignDelegatesToService() throws Exception {
+        mvc.perform(post("/api/v1/tasks/t1/reassign")
+                        .header("X-Workflow-Tenant", "his")
+                        .param("assignee", "p02"))
+                .andExpect(status().isNoContent());
+        verify(taskApp).reassignTask("his", "t1", "p02");
     }
 }

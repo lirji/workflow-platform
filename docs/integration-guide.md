@@ -134,6 +134,8 @@ workflow:
 public interface WorkflowClient {
     List<TaskView> findTasks(String tenant, String definitionKey, String businessKey);
     String completeReview(String tenant, String taskId, CompleteReviewRequest request); // 返回 actionId
+    void claimTask(String tenant, String taskId, String userId);       // 认领
+    void reassignTask(String tenant, String taskId, String assignee);  // 转办
 }
 ```
 > 发起故意**不在** SDK 里——发起必须与业务写库同事务，走 outbox（见 §5）。
@@ -147,6 +149,7 @@ public interface WorkflowClient {
 | GET | `/api/v1/tasks?definitionKey=&businessKey=` | 查活动待办 → `TaskView[]` |
 | GET | `/api/v1/tasks/search?definitionKey=&businessKey=&candidateGroup=&page=&size=` | 候选组过滤 + 分页 → `TaskSearchResult` |
 | POST | `/api/v1/tasks/{taskId}/complete-review` | 办理，body `CompleteReviewRequest` → **202** `{actionId, status:"PENDING_BUSINESS"}`；冲突 409 |
+| POST | `/api/v1/tasks/{taskId}/claim?userId=` / `reassign?assignee=` / `delegate?userId=` / `unclaim` | 任务操作：认领/转办/委派/撤回 → 204；任务不存在 404 |
 | GET | `/api/v1/process-instances?definitionKey=&businessKey=` | 查实例（含最终一致 `phase`）→ `ProcessInstanceView[]` |
 | GET | `/api/v1/process-instances/{id}/timeline` | 历史轨迹 → `TimelineEntry[]` |
 | GET | `/api/v1/definitions/{key}/xml` | 最新版 BPMN XML（含 DI，供 bpmn-js 渲染） |

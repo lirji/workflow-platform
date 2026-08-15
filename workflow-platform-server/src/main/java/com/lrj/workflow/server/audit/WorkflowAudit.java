@@ -24,6 +24,10 @@ public class WorkflowAudit {
         log.warn("action=ADMIN_OP op={} pid={} detail={}", op, processInstanceId, detail);
     }
 
+    public void taskOp(String tenant, String op, String taskId, String target) {
+        log.info("action=TASK_OP tenant={} op={} taskId={} target={}", tenant, op, taskId, target);
+    }
+
     public void jobRetried(String jobId, int retries) {
         log.info("action=JOB_RETRY jobId={} retries={}", jobId, retries);
     }

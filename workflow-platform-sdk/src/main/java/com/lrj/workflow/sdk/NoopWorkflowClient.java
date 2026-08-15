@@ -24,4 +24,14 @@ public class NoopWorkflowClient implements WorkflowClient {
         log.debug("WorkflowClient 未启用(Noop),completeReview 跳过 taskId={}", taskId);
         return null;
     }
+
+    @Override
+    public void claimTask(String tenant, String taskId, String userId) {
+        log.debug("WorkflowClient 未启用(Noop),claimTask 跳过 taskId={}", taskId);
+    }
+
+    @Override
+    public void reassignTask(String tenant, String taskId, String assignee) {
+        log.debug("WorkflowClient 未启用(Noop),reassignTask 跳过 taskId={}", taskId);
+    }
 }

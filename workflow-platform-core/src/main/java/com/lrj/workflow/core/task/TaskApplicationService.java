@@ -43,6 +43,39 @@ public class TaskApplicationService {
         taskService.claim(taskId, userId);
     }
 
+    /** 校验任务在租户下存在,否则抛 FlowableObjectNotFoundException(→404)。 */
+    private Task requireTask(String tenant, String taskId) {
+        Task t = taskService.createTaskQuery().taskId(taskId).taskTenantId(tenant).singleResult();
+        if (t == null) {
+            throw new org.flowable.common.engine.api.FlowableObjectNotFoundException("任务不存在: " + taskId, Task.class);
+        }
+        return t;
+    }
+
+    /** 认领:设办理人为 userId(setAssignee 幂等,不因已被认领而抛错)。 */
+    public void claimTask(String tenant, String taskId, String userId) {
+        requireTask(tenant, taskId);
+        taskService.setAssignee(taskId, userId);
+    }
+
+    /** 转办:改办理人为 assignee。 */
+    public void reassignTask(String tenant, String taskId, String assignee) {
+        requireTask(tenant, taskId);
+        taskService.setAssignee(taskId, assignee);
+    }
+
+    /** 委派:委派给 userId(委派后由其办理并 resolve 回原办理人)。 */
+    public void delegateTask(String tenant, String taskId, String userId) {
+        requireTask(tenant, taskId);
+        taskService.delegateTask(taskId, userId);
+    }
+
+    /** 撤回认领:清空办理人,任务回到候选池。 */
+    public void unclaimTask(String tenant, String taskId) {
+        requireTask(tenant, taskId);
+        taskService.unclaim(taskId);
+    }
+
     /** 按租户 + (可选)流程定义 key + businessKey 查活动任务。shadow 镜像与待办中心共用。 */
     public List<TaskView> findTasks(String tenant, String definitionKey, String businessKey) {
         var q = taskService.createTaskQuery().taskTenantId(tenant);

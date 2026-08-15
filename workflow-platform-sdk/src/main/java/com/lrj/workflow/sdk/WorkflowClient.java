@@ -16,4 +16,10 @@ public interface WorkflowClient {
 
     /** 办理审方(通过/驳回),返回 server 生成的 actionId;不可用时返回 null(Noop)。 */
     String completeReview(String tenant, String taskId, CompleteReviewRequest request);
+
+    /** 认领任务(设办理人为 userId)。 */
+    void claimTask(String tenant, String taskId, String userId);
+
+    /** 转办任务(改办理人为 assignee)。 */
+    void reassignTask(String tenant, String taskId, String assignee);
 }
