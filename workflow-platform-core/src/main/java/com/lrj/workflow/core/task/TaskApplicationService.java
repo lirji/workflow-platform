@@ -1,0 +1,93 @@
+package com.lrj.workflow.core.task;
+
+import com.lrj.workflow.core.WorkflowConflictException;
+import com.lrj.workflow.core.link.ProcessLink;
+import com.lrj.workflow.core.link.ProcessLinkRepository;
+import com.lrj.workflow.core.link.ProcessPhase;
+import com.lrj.workflow.protocol.event.Actor;
+import org.flowable.engine.RuntimeService;
+import org.flowable.engine.TaskService;
+import org.flowable.task.api.Task;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 任务办理。complete 与"delegate 写 outbox""link 阶段更新"同一事务原子提交(Flowable 用 Spring 事务)。
+ */
+@Service
+public class TaskApplicationService {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskApplicationService.class);
+
+    private final TaskService taskService;
+    private final RuntimeService runtimeService;
+    private final ProcessLinkRepository linkRepo;
+
+    public TaskApplicationService(TaskService taskService, RuntimeService runtimeService,
+                                  ProcessLinkRepository linkRepo) {
+        this.taskService = taskService;
+        this.runtimeService = runtimeService;
+        this.linkRepo = linkRepo;
+    }
+
+    public void claim(String taskId, String userId) {
+        taskService.claim(taskId, userId);
+    }
+
+    /**
+     * 审方办理(通过/驳回)。decision ∈ {PASS, REJECT}。生成 actionId 作业务幂等键。
+     * @return 生成的 actionId
+     */
+    @Transactional
+    public String completeReview(String taskId, String tenant, String decision, String opinion, Actor actor) {
+        if (!"PASS".equals(decision) && !"REJECT".equals(decision)) {
+            throw new IllegalArgumentException("decision 必须是 PASS 或 REJECT: " + decision);
+        }
+        Task task = taskService.createTaskQuery().taskId(taskId).taskTenantId(tenant).singleResult();
+        if (task == null) {
+            throw new WorkflowConflictException("任务不存在或不属于该租户: " + taskId);
+        }
+        String actionId = UUID.randomUUID().toString();
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("decision", decision);
+        vars.put("opinion", opinion);
+        vars.put("actionId", actionId);
+        vars.put("completedTaskId", taskId);
+        vars.put("actorSub", actor == null ? null : actor.subjectId());
+        vars.put("actorUsername", actor == null ? null : actor.username());
+        vars.put("actorDisplayName", actor == null ? null : actor.displayName());
+
+        String instanceId = task.getProcessInstanceId();
+        // 驱动 BPMN:结论网关 → prepareAction(delegate 写 outbox)→ 泊在 waitApplied message catch
+        taskService.complete(taskId, vars);
+
+        transitionAfterComplete(instanceId);
+        log.info("审方办理完成 taskId={} decision={} actionId={}", taskId, decision, actionId);
+        return actionId;
+    }
+
+    /** 完成后据流程当前形态推进 link 阶段:结束→COMPLETED;仍有人工任务→WAITING_USER;否则(泊在 message)→WAITING_BUSINESS。 */
+    private void transitionAfterComplete(String instanceId) {
+        ProcessLink link = linkRepo.findByInstanceId(instanceId).orElse(null);
+        if (link == null) {
+            return;
+        }
+        ProcessPhase next;
+        boolean ended = runtimeService.createProcessInstanceQuery().processInstanceId(instanceId).count() == 0;
+        if (ended) {
+            next = ProcessPhase.COMPLETED;
+        } else {
+            boolean hasTask = taskService.createTaskQuery().processInstanceId(instanceId).count() > 0;
+            next = hasTask ? ProcessPhase.WAITING_USER : ProcessPhase.WAITING_BUSINESS;
+        }
+        if (next != link.phase()) {
+            linkRepo.updatePhase(instanceId, next, link.version());
+        }
+    }
+}

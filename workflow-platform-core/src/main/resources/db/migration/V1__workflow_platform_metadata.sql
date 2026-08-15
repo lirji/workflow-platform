@@ -33,6 +33,7 @@ CREATE TABLE wf_inbox_event (
     offset_no     BIGINT,
     event_type    VARCHAR(128),
     payload_hash  VARCHAR(128),
+    payload       TEXT,                                     -- 保留原始 JSON,供 WAITING_CORRELATION 重试重放
     status        VARCHAR(32)  NOT NULL DEFAULT 'RECEIVED', -- RECEIVED / PROCESSING / DONE / WAITING_CORRELATION / FAILED
     attempt       INT          NOT NULL DEFAULT 0,
     next_retry_at TIMESTAMPTZ,

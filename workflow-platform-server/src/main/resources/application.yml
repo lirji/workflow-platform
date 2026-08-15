@@ -13,6 +13,23 @@ spring:
     # 库里已有 Flowable 自建的 ACT_*,Flyway 首跑需 baseline 既有 schema 再应用 wf_* 迁移
     baseline-on-migrate: true
     baseline-version: 0
+  kafka:
+    # 复用 his-platform 现有 broker(FINAL_PLAN 偏差 P1-5);workflow.* 为独立 topic
+    bootstrap-servers: ${WORKFLOW_KAFKA:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: workflow-server
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+workflow:
+  outbox:
+    batch-size: 100
+    poll-ms: 1000
+    lease-seconds: 30
 
 flowable:
   # Phase 0 dev 允许引擎自建/升级 ACT_* 表以验证兼容;生产在锁版后改 false + 版本化官方 DDL(FINAL_PLAN §11.1)

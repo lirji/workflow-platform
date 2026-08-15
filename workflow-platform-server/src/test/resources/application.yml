@@ -11,9 +11,17 @@ spring:
   flyway:
     # H2 spike 不需要 wf_* 平台表(PG 专用 SQL);wf_* 迁移由 phase1-migration-smoke.sh / Testcontainers 覆盖
     enabled: false
+  kafka:
+    listener:
+      auto-startup: false
 
 flowable:
   database-schema-update: true
   # 测试里手动驱动流程,关掉 async executor 避免后台线程干扰断言
   async-executor-activate: false
   check-process-definitions: false
+
+# H2 spike 测试不需要 Kafka 监听与 outbox/correlation 定时作业(否则空跑报 wf_ 表不存在)
+workflow:
+  jobs:
+    enabled: false

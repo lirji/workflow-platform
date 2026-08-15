@@ -24,6 +24,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Kafka Published Language:复用 his 现有 broker(9092),workflow.* 独立 topic -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
         <!-- 运行时数据库:独立 PostgreSQL 25432 -->
         <dependency>
             <groupId>org.postgresql</groupId>
