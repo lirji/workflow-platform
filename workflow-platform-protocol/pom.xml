@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lrj.workflow</groupId>
+        <artifactId>workflow-platform</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>workflow-platform-protocol</artifactId>
+    <description>跨上下文 DTO 契约 (Published Language):事件 + REST API records。纯 Java + Jackson 注解,无 Spring/Flowable。</description>
+
+    <dependencies>
+        <!-- 仅 Jackson 注解;不引 spring/flowable,保持契约纯净 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+    </dependencies>
+</project>

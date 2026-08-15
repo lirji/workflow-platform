@@ -1,0 +1,29 @@
+server:
+  port: 8300
+
+spring:
+  application:
+    name: workflow-platform-server
+  datasource:
+    url: ${WORKFLOW_DB_URL:jdbc:postgresql://localhost:25432/workflow}
+    username: ${WORKFLOW_DB_USER:workflow}
+    password: ${WORKFLOW_DB_PASSWORD:workflow}
+    driver-class-name: org.postgresql.Driver
+
+flowable:
+  # Phase 0 dev 允许引擎自建/升级 ACT_* 表以验证兼容;生产在锁版后改 false + 版本化官方 DDL(FINAL_PLAN §11.1)
+  database-schema-update: true
+  # server 承载运行时,开启 async executor 驱动 timer/异步任务
+  async-executor-activate: true
+  # 自动部署由 admin 负责;server 不从 classpath 自动部署,避免双写
+  check-process-definitions: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

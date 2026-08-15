@@ -1,0 +1,36 @@
+# 流程/审批中台本地基建:独立 PostgreSQL(Flowable ACT_* + 平台 wf_* 表)+ Redis(缓存预留)。
+# 纪律(risk/auth 都踩过 docker-proxy 残留占端口):独立 project name + 端口全变量化 +
+# 起前先 `docker compose -p workflow-platform down --remove-orphans`。见 deploy/scripts/compose-preflight.sh。
+name: workflow-platform
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: workflow-postgres
+    environment:
+      POSTGRES_DB: ${WORKFLOW_PG_DB:-workflow}
+      POSTGRES_USER: ${WORKFLOW_PG_USER:-workflow}
+      POSTGRES_PASSWORD: ${WORKFLOW_PG_PASSWORD:-workflow}
+    ports:
+      - "${WORKFLOW_PG_PORT:-25432}:5432"
+    volumes:
+      - workflow-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WORKFLOW_PG_USER:-workflow} -d ${WORKFLOW_PG_DB:-workflow}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: workflow-redis
+    ports:
+      - "${WORKFLOW_REDIS_PORT:-26379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  workflow-pg-data:

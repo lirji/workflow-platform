@@ -1,0 +1,16 @@
+# Phase 0 兼容 spike:用 H2 内嵌库,不依赖外部 PostgreSQL,快速坐实 Flowable 引擎启动与执行
+server:
+  port: 0
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:wf-spike;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+flowable:
+  database-schema-update: true
+  # 测试里手动驱动流程,关掉 async executor 避免后台线程干扰断言
+  async-executor-activate: false
+  check-process-definitions: false

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://lrj.com/workflow/spike">
+
+  <!-- 并行会签:验证运行时动态加签 API(FINAL_PLAN §7.3 待验证能力) -->
+  <process id="spikeMulti" name="Spike Multi-Instance" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="mf1" sourceRef="start" targetRef="sign"/>
+    <userTask id="sign" name="会签" flowable:assignee="${signer}">
+      <multiInstanceLoopCharacteristics isSequential="false"
+                                        flowable:collection="${signers}"
+                                        flowable:elementVariable="signer"/>
+    </userTask>
+    <sequenceFlow id="mf2" sourceRef="sign" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>

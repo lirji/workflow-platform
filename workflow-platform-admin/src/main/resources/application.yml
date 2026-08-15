@@ -1,0 +1,28 @@
+server:
+  port: 8301
+
+spring:
+  application:
+    name: workflow-platform-admin
+  datasource:
+    url: ${WORKFLOW_DB_URL:jdbc:postgresql://localhost:25432/workflow}
+    username: ${WORKFLOW_DB_USER:workflow}
+    password: ${WORKFLOW_DB_PASSWORD:workflow}
+    driver-class-name: org.postgresql.Driver
+
+flowable:
+  # admin 与 server 连同一 workflow 库;生产由版本化 DDL/受控 migration 管 schema,admin 不自建
+  database-schema-update: true
+  # admin 只做部署/管理,不跑运行时作业
+  async-executor-activate: false
+  check-process-definitions: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
