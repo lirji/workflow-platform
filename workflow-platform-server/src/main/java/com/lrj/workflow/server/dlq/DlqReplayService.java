@@ -2,6 +2,8 @@ package com.lrj.workflow.server.dlq;
 
 import com.lrj.workflow.core.dlq.DlqEventRepository;
 import com.lrj.workflow.core.dlq.DlqRecord;
+import com.lrj.workflow.server.audit.WorkflowAudit;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -21,10 +23,15 @@ public class DlqReplayService {
 
     private final DlqEventRepository dlq;
     private final KafkaTemplate<String, String> kafka;
+    private final WorkflowMetrics metrics;
+    private final WorkflowAudit audit;
 
-    public DlqReplayService(DlqEventRepository dlq, KafkaTemplate<String, String> kafka) {
+    public DlqReplayService(DlqEventRepository dlq, KafkaTemplate<String, String> kafka,
+                            WorkflowMetrics metrics, WorkflowAudit audit) {
         this.dlq = dlq;
         this.kafka = kafka;
+        this.metrics = metrics;
+        this.audit = audit;
     }
 
     public List<DlqRecord> list(String status, int limit) {
@@ -39,6 +46,8 @@ public class DlqReplayService {
         }
         kafka.send(rec.originalTopic(), rec.msgKey(), rec.payload());
         dlq.markReplayed(id);
+        metrics.dlqReplayed();
+        audit.dlqReplayed(id, rec.originalTopic());
         log.info("死信重放 id={} → topic={} key={}", id, rec.originalTopic(), rec.msgKey());
         return true;
     }

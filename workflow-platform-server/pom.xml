@@ -24,6 +24,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- 可观测性:Prometheus 指标注册表(/actuator/prometheus 暴露 workflow_* 计数器) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- 鉴权:OAuth2 Resource Server 校验 Casdoor JWT。由 workflow.security.enabled 开关(默认关,保 shadow 联调) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

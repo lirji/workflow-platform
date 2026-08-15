@@ -64,7 +64,11 @@
 - 2.1 admin 运维面板 ✅(后端 + 前端)
   - **后端 ✅**:`/api/v1/admin` 实例查询/incident/挂起/恢复/终止、死信作业列/重试;`/api/v1/admin/**`+`/api/v1/dlq/**` 需 ADMIN。companion:`ProcessInstanceView.suspended` + Flowable NotFound→404。
   - **前端 ✅**(经 frontend-plan `docs/plans/workflow-console-ops-0815-1938/`):`/ops` 单页 Tabs(实例运维含 phase/INCIDENT 筛选 + 挂起/恢复/终止[reason 必填]/看轨迹;死信作业列/重试;DLQ 列/单条+批量重放),ADMIN 门控(dev 逃生门)、诚实异步文案、爆发式刷新。28 Vitest + Playwright 冒烟 + 真机门控/结构验证。**注**:数据需 :8300 部署含 admin 端点的新代码(当前 shadow 实例为旧代码)。
-- 2.2 可观测性/审计、2.3 HA、2.4 契约治理:待做。
+- 2.2 可观测性/审计 —— **指标 + 审计 ✅**
+  - **Prometheus 指标 ✅**:micrometer-registry-prometheus + `WorkflowMetrics`(process.started/review.completed/action.applied/correlation.outcome/dlq.landed/dlq.replayed/deadletter.retried/admin.op),埋点在 server 层 listener/controller/service(不侵入 core);`/actuator/prometheus` 暴露。
+  - **结构化审计 ✅**:`WorkflowAudit`(独立 logger WORKFLOW_AUDIT)记审方完成/运维干预/DLQ 重放。
+  - **待做**:lifecycle.v1 事件生产(供外部观察者)、分布式追踪、关键告警规则。
+- 2.3 HA、2.4 契约治理:待做。
 - 2.2 可观测性:消费 `lifecycle.v1` + Micrometer/Prometheus 指标 + 结构化审计日志 + 关键告警
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)

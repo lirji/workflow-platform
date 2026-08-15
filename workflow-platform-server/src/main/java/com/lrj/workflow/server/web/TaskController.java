@@ -4,6 +4,8 @@ import com.lrj.workflow.core.task.TaskApplicationService;
 import com.lrj.workflow.protocol.api.CompleteReviewRequest;
 import com.lrj.workflow.protocol.api.TaskView;
 import com.lrj.workflow.protocol.event.Actor;
+import com.lrj.workflow.server.audit.WorkflowAudit;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,10 +31,15 @@ public class TaskController {
 
     private final TaskApplicationService taskApp;
     private final WorkflowIdentityResolver identity;
+    private final WorkflowMetrics metrics;
+    private final WorkflowAudit audit;
 
-    public TaskController(TaskApplicationService taskApp, WorkflowIdentityResolver identity) {
+    public TaskController(TaskApplicationService taskApp, WorkflowIdentityResolver identity,
+                          WorkflowMetrics metrics, WorkflowAudit audit) {
         this.taskApp = taskApp;
         this.identity = identity;
+        this.metrics = metrics;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -60,8 +67,11 @@ public class TaskController {
             @PathVariable String taskId,
             @RequestBody CompleteReviewRequest req) {
         // 鉴权启用时 actor 由 JWT 派生覆盖请求体(可信办理人真相);未启用则用请求体(shadow 由消费方传可信身份)。
+        String effTenant = identity.tenant(tenant);
         Actor actor = identity.actor(new Actor(req.actorSub(), req.actorUsername(), req.actorDisplayName()));
-        String actionId = taskApp.completeReview(taskId, identity.tenant(tenant), req.decision(), req.opinion(), actor);
+        String actionId = taskApp.completeReview(taskId, effTenant, req.decision(), req.opinion(), actor);
+        metrics.reviewCompleted(effTenant, req.decision());
+        audit.reviewCompleted(effTenant, taskId, req.decision(), actionId, actor);
         return ResponseEntity.accepted().body(Map.of("actionId", actionId, "status", "PENDING_BUSINESS"));
     }
 }

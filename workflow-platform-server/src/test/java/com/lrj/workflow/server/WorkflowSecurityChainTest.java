@@ -42,6 +42,8 @@ class WorkflowSecurityChainTest {
     @Autowired MockMvc mvc;
     @MockBean TaskApplicationService taskApp;
     @MockBean JwtDecoder jwtDecoder;
+    @MockBean com.lrj.workflow.server.metrics.WorkflowMetrics metrics;
+    @MockBean com.lrj.workflow.server.audit.WorkflowAudit audit;
 
     @Test
     void noToken_is401() throws Exception {

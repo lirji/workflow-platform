@@ -2,6 +2,7 @@ package com.lrj.workflow.server.kafka;
 
 import com.lrj.workflow.core.dlq.DlqEventRepository;
 import com.lrj.workflow.protocol.event.WorkflowTopics;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
@@ -22,9 +23,11 @@ public class WorkflowDlqListener {
     private static final Logger log = LoggerFactory.getLogger(WorkflowDlqListener.class);
 
     private final DlqEventRepository dlq;
+    private final WorkflowMetrics metrics;
 
-    public WorkflowDlqListener(DlqEventRepository dlq) {
+    public WorkflowDlqListener(DlqEventRepository dlq, WorkflowMetrics metrics) {
         this.dlq = dlq;
+        this.metrics = metrics;
     }
 
     @KafkaListener(topics = WorkflowTopics.DLQ, groupId = "workflow-server-dlq")
@@ -32,6 +35,7 @@ public class WorkflowDlqListener {
         String originalTopic = header(rec, KafkaHeaders.DLT_ORIGINAL_TOPIC, rec.topic());
         String error = header(rec, KafkaHeaders.DLT_EXCEPTION_MESSAGE, null);
         long id = dlq.save(originalTopic, rec.key(), rec.value(), error);
+        metrics.dlqLanded(originalTopic);
         log.warn("死信落库 id={} originalTopic={} key={} error={}", id, originalTopic, rec.key(), error);
     }
 

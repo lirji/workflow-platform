@@ -5,6 +5,7 @@ import com.lrj.workflow.core.process.ProcessApplicationService;
 import com.lrj.workflow.protocol.event.EventEnvelopeV1;
 import com.lrj.workflow.protocol.event.StartProcessCommandV1;
 import com.lrj.workflow.protocol.event.WorkflowTopics;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -21,12 +22,14 @@ public class WorkflowStartListener {
     private final EnvelopeCodec codec;
     private final InboxEventRepository inbox;
     private final ProcessApplicationService processApp;
+    private final WorkflowMetrics metrics;
 
     public WorkflowStartListener(EnvelopeCodec codec, InboxEventRepository inbox,
-                                 ProcessApplicationService processApp) {
+                                 ProcessApplicationService processApp, WorkflowMetrics metrics) {
         this.codec = codec;
         this.inbox = inbox;
         this.processApp = processApp;
+        this.metrics = metrics;
     }
 
     @KafkaListener(topics = WorkflowTopics.COMMAND_START, groupId = "workflow-server")
@@ -38,6 +41,7 @@ public class WorkflowStartListener {
         }
         try {
             processApp.start(env.tenantId(), env.payload());
+            metrics.processStarted(env.tenantId(), env.payload().processDefinitionKey());
             inbox.markDone(env.eventId());
         } catch (Exception e) {
             inbox.delete(env.eventId());   // 允许重投重试

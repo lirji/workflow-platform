@@ -35,6 +35,8 @@ class TaskControllerTest {
 
     @Autowired MockMvc mvc;
     @MockBean TaskApplicationService taskApp;
+    @MockBean com.lrj.workflow.server.metrics.WorkflowMetrics metrics;
+    @MockBean com.lrj.workflow.server.audit.WorkflowAudit audit;
 
     @Test
     void listTasksByBusinessKey() throws Exception {

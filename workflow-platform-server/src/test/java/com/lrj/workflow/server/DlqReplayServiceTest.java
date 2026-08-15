@@ -2,7 +2,9 @@ package com.lrj.workflow.server;
 
 import com.lrj.workflow.core.dlq.DlqEventRepository;
 import com.lrj.workflow.core.dlq.DlqRecord;
+import com.lrj.workflow.server.audit.WorkflowAudit;
 import com.lrj.workflow.server.dlq.DlqReplayService;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -20,7 +22,8 @@ class DlqReplayServiceTest {
     private final DlqEventRepository repo = mock(DlqEventRepository.class);
     @SuppressWarnings("unchecked")
     private final KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
-    private final DlqReplayService svc = new DlqReplayService(repo, kafka);
+    private final DlqReplayService svc = new DlqReplayService(repo, kafka,
+            mock(WorkflowMetrics.class), mock(WorkflowAudit.class));
 
     private static DlqRecord rec(long id, String status) {
         return new DlqRecord(id, "workflow.command.start.v1", "his|hisRxReview|90003",

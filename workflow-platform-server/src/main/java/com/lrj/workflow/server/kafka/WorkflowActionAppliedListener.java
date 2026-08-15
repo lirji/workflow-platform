@@ -5,6 +5,7 @@ import com.lrj.workflow.core.inbox.InboxEventRepository;
 import com.lrj.workflow.protocol.event.EventEnvelopeV1;
 import com.lrj.workflow.protocol.event.WorkflowActionAppliedV1;
 import com.lrj.workflow.protocol.event.WorkflowTopics;
+import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -21,12 +22,14 @@ public class WorkflowActionAppliedListener {
     private final EnvelopeCodec codec;
     private final InboxEventRepository inbox;
     private final MessageCorrelationService correlation;
+    private final WorkflowMetrics metrics;
 
     public WorkflowActionAppliedListener(EnvelopeCodec codec, InboxEventRepository inbox,
-                                         MessageCorrelationService correlation) {
+                                         MessageCorrelationService correlation, WorkflowMetrics metrics) {
         this.codec = codec;
         this.inbox = inbox;
         this.correlation = correlation;
+        this.metrics = metrics;
     }
 
     @KafkaListener(topics = WorkflowTopics.ACTION_APPLIED, groupId = "workflow-server")
@@ -38,6 +41,10 @@ public class WorkflowActionAppliedListener {
         }
         try {
             var outcome = correlation.correlate(env.payload());
+            metrics.correlationOutcome(outcome.name());
+            if (outcome == MessageCorrelationService.Outcome.CORRELATED && env.payload().status() != null) {
+                metrics.actionApplied(env.payload().status().name());
+            }
             if (outcome == MessageCorrelationService.Outcome.WAITING_SUBSCRIPTION) {
                 inbox.markWaitingCorrelation(env.eventId(), 5, "message 订阅未就绪");
             } else {
