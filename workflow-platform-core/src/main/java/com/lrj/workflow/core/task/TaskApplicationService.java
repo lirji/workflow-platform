@@ -4,15 +4,18 @@ import com.lrj.workflow.core.WorkflowConflictException;
 import com.lrj.workflow.core.link.ProcessLink;
 import com.lrj.workflow.core.link.ProcessLinkRepository;
 import com.lrj.workflow.core.link.ProcessPhase;
+import com.lrj.workflow.protocol.api.TaskView;
 import com.lrj.workflow.protocol.event.Actor;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
+import org.flowable.identitylink.api.IdentityLink;
 import org.flowable.task.api.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -38,6 +41,30 @@ public class TaskApplicationService {
 
     public void claim(String taskId, String userId) {
         taskService.claim(taskId, userId);
+    }
+
+    /** 按租户 + (可选)流程定义 key + businessKey 查活动任务。shadow 镜像与待办中心共用。 */
+    public List<TaskView> findTasks(String tenant, String definitionKey, String businessKey) {
+        var q = taskService.createTaskQuery().taskTenantId(tenant);
+        if (definitionKey != null && !definitionKey.isBlank()) {
+            q = q.processDefinitionKey(definitionKey);
+        }
+        if (businessKey != null && !businessKey.isBlank()) {
+            q = q.processInstanceBusinessKey(businessKey);
+        }
+        return q.orderByTaskCreateTime().asc().list().stream().map(this::toView).toList();
+    }
+
+    private TaskView toView(Task t) {
+        List<String> groups = taskService.getIdentityLinksForTask(t.getId()).stream()
+                .map(IdentityLink::getGroupId).filter(g -> g != null).distinct().toList();
+        // 流程定义 id 形如 "key:version:genId",取 key;businessKey 从 link 反查(可靠)
+        String pdKey = t.getProcessDefinitionId() == null ? null : t.getProcessDefinitionId().split(":")[0];
+        String businessKey = linkRepo.findByInstanceId(t.getProcessInstanceId())
+                .map(l -> l.businessKey()).orElse(null);
+        return new TaskView(t.getId(), t.getTaskDefinitionKey(), t.getName(), t.getProcessInstanceId(),
+                pdKey, businessKey, t.getTenantId(), t.getAssignee(), groups,
+                t.getCreateTime() == null ? null : t.getCreateTime().getTime());
     }
 
     /**
