@@ -54,6 +54,14 @@ public class ProcessLinkRepository {
                 MAPPER, tenant, defKey, bizKey, phase.name());
     }
 
+    /** 按 businessKey 找全部实例(任意阶段,最新在前)。供 console 只读查询。 */
+    public List<ProcessLink> findByBusinessKey(String tenant, String defKey, String bizKey) {
+        return jdbc.query(
+                "SELECT * FROM wf_process_link WHERE tenant_id=? AND process_definition_key=? "
+                        + "AND business_key=? ORDER BY id DESC",
+                MAPPER, tenant, defKey, bizKey);
+    }
+
     /**
      * 插入新 link。违反唯一约束(四元组幂等 / WAITING_USER 偏唯一)会抛
      * {@link org.springframework.dao.DuplicateKeyException},由 application service 区分处理。

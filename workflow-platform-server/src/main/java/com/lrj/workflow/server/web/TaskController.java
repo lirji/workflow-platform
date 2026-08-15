@@ -39,6 +39,18 @@ public class TaskController {
         return taskApp.findTasks(tenant, definitionKey, businessKey);
     }
 
+    /** 待办中心用:候选组过滤 + 分页。candidateGroup 可重复(?candidateGroup=PHARMACIST&candidateGroup=...)。 */
+    @GetMapping("/search")
+    public com.lrj.workflow.protocol.api.TaskSearchResult search(
+            @RequestHeader("X-Workflow-Tenant") String tenant,
+            @RequestParam(required = false) String definitionKey,
+            @RequestParam(required = false) String businessKey,
+            @RequestParam(required = false) List<String> candidateGroup,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return taskApp.searchTasks(tenant, definitionKey, businessKey, candidateGroup, page, size);
+    }
+
     @PostMapping("/{taskId}/complete-review")
     public ResponseEntity<Map<String, String>> completeReview(
             @RequestHeader("X-Workflow-Tenant") String tenant,

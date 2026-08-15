@@ -2,6 +2,9 @@
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:flowable="http://flowable.org/bpmn"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
              targetNamespace="http://lrj.com/workflow/his">
 
   <!-- 业务落地 ACK 用 message(非 signal,避免广播给多个订阅者);按 executionId 精确关联 -->
@@ -47,4 +50,72 @@
 
     <endEvent id="end"/>
   </process>
+
+  <bpmndi:BPMNDiagram id="D_hisRxReview">
+    <bpmndi:BPMNPlane id="P_hisRxReview" bpmnElement="hisRxReview">
+      <bpmndi:BPMNShape id="S_start" bpmnElement="start">
+        <omgdc:Bounds x="152" y="202" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_review" bpmnElement="pharmacistReview">
+        <omgdc:Bounds x="230" y="176" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_decisionGw" bpmnElement="decisionGw" isMarkerVisible="true">
+        <omgdc:Bounds x="390" y="191" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_prepareAction" bpmnElement="prepareAction">
+        <omgdc:Bounds x="490" y="176" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_waitApplied" bpmnElement="waitApplied">
+        <omgdc:Bounds x="652" y="198" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_appliedGw" bpmnElement="appliedGw" isMarkerVisible="true">
+        <omgdc:Bounds x="740" y="191" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_manualRepair" bpmnElement="manualRepair">
+        <omgdc:Bounds x="710" y="320" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_end" bpmnElement="end">
+        <omgdc:Bounds x="852" y="202" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E_f_start_review" bpmnElement="f_start_review">
+        <omgdi:waypoint x="180" y="216"/>
+        <omgdi:waypoint x="230" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_review_gw" bpmnElement="f_review_gw">
+        <omgdi:waypoint x="340" y="216"/>
+        <omgdi:waypoint x="390" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_decision_action" bpmnElement="f_decision_action">
+        <omgdi:waypoint x="440" y="216"/>
+        <omgdi:waypoint x="490" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_action_wait" bpmnElement="f_action_wait">
+        <omgdi:waypoint x="600" y="216"/>
+        <omgdi:waypoint x="652" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_wait_appliedgw" bpmnElement="f_wait_appliedgw">
+        <omgdi:waypoint x="688" y="216"/>
+        <omgdi:waypoint x="740" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_applied_end" bpmnElement="f_applied_end">
+        <omgdi:waypoint x="790" y="216"/>
+        <omgdi:waypoint x="852" y="216"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_decision_repair" bpmnElement="f_decision_repair">
+        <omgdi:waypoint x="415" y="241"/>
+        <omgdi:waypoint x="415" y="360"/>
+        <omgdi:waypoint x="710" y="360"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_applied_repair" bpmnElement="f_applied_repair">
+        <omgdi:waypoint x="765" y="241"/>
+        <omgdi:waypoint x="765" y="320"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_f_repair_end" bpmnElement="f_repair_end">
+        <omgdi:waypoint x="820" y="360"/>
+        <omgdi:waypoint x="866" y="360"/>
+        <omgdi:waypoint x="866" y="230"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
 </definitions>

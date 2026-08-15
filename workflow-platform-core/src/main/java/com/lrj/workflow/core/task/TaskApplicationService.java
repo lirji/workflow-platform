@@ -55,6 +55,43 @@ public class TaskApplicationService {
         return q.orderByTaskCreateTime().asc().list().stream().map(this::toView).toList();
     }
 
+    /**
+     * 待办分页查询(console 用):在 findTasks 基础上按候选组过滤 + 分页。候选组匹配做归一化(大小写不敏感 +
+     * 去 {@code <org>_}/{@code path/} 前缀),以对齐 BPMN 里大写无前缀的 candidateGroups 与 Casdoor token 组名。
+     */
+    public com.lrj.workflow.protocol.api.TaskSearchResult searchTasks(
+            String tenant, String definitionKey, String businessKey,
+            List<String> candidateGroups, int page, int size) {
+        List<TaskView> all = findTasks(tenant, definitionKey, businessKey);
+        if (candidateGroups != null && !candidateGroups.isEmpty()) {
+            java.util.Set<String> want = candidateGroups.stream().map(TaskApplicationService::normalizeGroup)
+                    .collect(java.util.stream.Collectors.toSet());
+            all = all.stream().filter(t -> t.candidateGroups() != null && t.candidateGroups().stream()
+                    .map(TaskApplicationService::normalizeGroup).anyMatch(want::contains)).toList();
+        }
+        long total = all.size();
+        int from = Math.max(0, page) * Math.max(1, size);
+        int to = Math.min(all.size(), from + Math.max(1, size));
+        List<TaskView> pageItems = from >= all.size() ? List.of() : all.subList(from, to);
+        return new com.lrj.workflow.protocol.api.TaskSearchResult(pageItems, total, page, size);
+    }
+
+    static String normalizeGroup(String g) {
+        if (g == null) {
+            return "";
+        }
+        String s = g;
+        int slash = s.lastIndexOf('/');
+        if (slash >= 0) {
+            s = s.substring(slash + 1);
+        }
+        int us = s.lastIndexOf('_');
+        if (us >= 0) {
+            s = s.substring(us + 1);
+        }
+        return s.toLowerCase();
+    }
+
     private TaskView toView(Task t) {
         List<String> groups = taskService.getIdentityLinksForTask(t.getId()).stream()
                 .map(IdentityLink::getGroupId).filter(g -> g != null).distinct().toList();
