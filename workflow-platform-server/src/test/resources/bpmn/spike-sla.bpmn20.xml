@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://lrj.com/workflow/spike">
+
+  <!-- SLA/超时能力验证:审核任务挂非阻塞边界定时器(PT1H),到期后并行升级到"超时升级处理",原任务保留。 -->
+  <process id="slaReview" name="SLA审核" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start" sourceRef="start" targetRef="review"/>
+
+    <userTask id="review" name="审核" flowable:candidateGroups="REVIEWER"/>
+    <sequenceFlow id="f_review_end" sourceRef="review" targetRef="end_review"/>
+    <endEvent id="end_review"/>
+
+    <!-- 非阻塞边界定时器:到期升级但不取消原任务(SLA 提醒/升级) -->
+    <boundaryEvent id="slaTimer" attachedToRef="review" cancelActivity="false">
+      <timerEventDefinition>
+        <timeDuration>PT1H</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <sequenceFlow id="f_timer_esc" sourceRef="slaTimer" targetRef="escalate"/>
+    <userTask id="escalate" name="超时升级处理" flowable:candidateGroups="MANAGER"/>
+    <sequenceFlow id="f_esc_end" sourceRef="escalate" targetRef="end_esc"/>
+    <endEvent id="end_esc"/>
+  </process>
+</definitions>
