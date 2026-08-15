@@ -1,0 +1,13 @@
+# 构建上下文瘦身(context=仓库根):排除产物/依赖/密钥/日志。
+**/target
+**/node_modules
+**/dist
+**/.git
+**/*.log
+**/.env
+**/.env.local
+**/.DS_Store
+**/playwright-report
+**/test-results
+**/.vite
+**/coverage

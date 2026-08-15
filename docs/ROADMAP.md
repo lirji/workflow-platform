@@ -57,7 +57,7 @@
 |---|---|---|---|
 | 1.1 ✅ | **服务端 Casdoor JWT 鉴权**(已完成) | OAuth2 Resource Server 校验 Casdoor JWT;开关 `workflow.security.enabled`(默认 false 保 shadow 联调);启用时 tenant/actor **从 JWT 派生**覆盖明文头/请求体;groups claim 归一化为权限 | ✅ 关=12 测试全绿;开=无 token 401、带 JWT 200、actor 由 JWT 派生覆盖伪造请求体 |
 | 1.2 ✅ | **DLQ 消费 + 重放**(已完成) | DefaultErrorHandler 重试超限 → recoverer 投 `workflow.dlq.v1`;DlqListener 落库 `wf_dlq_event`;DlqReplayService + `/api/v1/dlq`(列/重放/批量重放),重放投回原 topic 由原监听幂等消费 | ✅ 单元/切片测试全绿;V2 迁移在真库应用通过。DLQ 路由本身走 compose 冒烟(与既有 Kafka 测试策略一致) |
-| 1.3 | **后端 Dockerfile + compose 补全** | server/admin 镜像;compose 补 kafka/nacos(或文档化外部依赖) | `docker compose up` 起全栈 |
+| 1.3 ✅ | **后端 Dockerfile + compose 补全**(已完成) | `deploy/Dockerfile` 多阶段(build 全 reactor → server/admin 双 target);compose 补 Kafka(KRaft 单节点)+ server(8300)+ admin(8301),healthcheck/depends_on 编排;端口全变量化 | ✅ `docker compose config` 通过 + `docker build server/admin` 全 reactor 在容器内构建成功。`up` 起栈步骤见 `deploy/README.md`(未在本机跑以免抢占运行中的 shadow :8300) |
 | 1.4 | **DB 迁移版本化** | 自有表(outbox/inbox/process_link)+ Flowable schema 迁移策略 | 干净库一键建表 |
 
 ### 阶段二 · 运维闭环(P1)
@@ -87,7 +87,9 @@
 
 ---
 
-**当前执行位置**:阶段一 · 1.1 ✅ + 1.2 ✅ 已完成 → 下一步 1.3 后端 Dockerfile + compose 补全。
+**当前执行位置**:阶段一 · 1.1 ✅ + 1.2 ✅ + 1.3 ✅ 已完成 → 下一步 1.4 DB 迁移版本化收尾。
+
+> 1.3 落地说明:`docker compose -p workflow-platform up -d --build` 起全栈(见 `deploy/README.md`);镜像 `deploy/Dockerfile` 多阶段、上下文=仓库根(根 `.dockerignore`)。全栈 up 未在本机执行(避免与 host 上运行中的 shadow :8300 抢端口),已过 config + build 验证。
 
 > 1.2 落地说明:`workflow.dlq.max-attempts`(默认 3)/`backoff-ms`。超限入 `workflow.dlq.v1` → `wf_dlq_event` 落库;
 > 运维 REST `GET /api/v1/dlq`、`POST /api/v1/dlq/{id}/replay`、`POST /api/v1/dlq/replay-all`。DLQ 面板留 P1(2.1)。
