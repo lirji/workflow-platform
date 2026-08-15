@@ -68,7 +68,8 @@
   - **Prometheus 指标 ✅**:micrometer-registry-prometheus + `WorkflowMetrics`(process.started/review.completed/action.applied/correlation.outcome/dlq.landed/dlq.replayed/deadletter.retried/admin.op),埋点在 server 层 listener/controller/service(不侵入 core);`/actuator/prometheus` 暴露。
   - **结构化审计 ✅**:`WorkflowAudit`(独立 logger WORKFLOW_AUDIT)记审方完成/运维干预/DLQ 重放。
   - **待做**:lifecycle.v1 事件生产(供外部观察者)、分布式追踪、关键告警规则。
-- 2.3 HA、2.4 契约治理:待做。
+- 2.4 契约治理 ✅:`ContractGoldenTest`(protocol)钉死所有对外 record(events + API DTOs)顶层字段集,改字段即 `mvn test` 失败→强制版本化;CI 即跨仓库契约门禁。接入指南 §7 已记。
+- 2.3 HA:待做。
 - 2.2 可观测性:消费 `lifecycle.v1` + Micrometer/Prometheus 指标 + 结构化审计日志 + 关键告警
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)
