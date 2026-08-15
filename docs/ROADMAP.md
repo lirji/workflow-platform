@@ -74,14 +74,13 @@
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)
 
-### 阶段三 · 多流程扩展(业务验证)
-- 3.1 接 2~3 个新审批场景(如退费、权限授予),量化"新流程 onboarding"成本
-- 3.2 沉淀流程模板 + 消费方适配脚手架
+### 阶段三 · 多流程扩展(业务验证)—— 平台侧就绪 ✅
+- 3.1/3.2 ✅(平台侧):onboarding 配方 `docs/onboarding-new-process.md`(以审方为模板,含中台/消费方/前端步骤 + checklist + 成本);中台侧新流程 = 部署一个 BPMN(运维面板/REST/classpath),可靠消息/幂等/鉴权/指标/审计/运维/DLQ 全复用。**live 新场景**(退费/权限授予的真实端到端)需消费方 repo 的发起+落地适配 + 前端待办中心 definitionKey 参数化(backlog 小改)——落在消费方仓库,不在本仓库。
 
-### 阶段四 · 流程能力增强(P2)—— 进行中
-- 4.1 任务操作 ✅(认领/转办/委派/撤回):core TaskApplicationService(租户校验,任务不存在→404)+ REST `/tasks/{id}/{claim,reassign,delegate,unclaim}` + SDK claimTask/reassignTask + 审计。**加签/会签**需 multi-instance BPMN 活动(审方流程无 MI),留待带 MI 的流程模板。
-- 4.2 SLA/超时/定时器升级 + 边界事件
-- 4.3 流程设计器(Option B)
+### 阶段四 · 流程能力增强(P2)—— 基本完成
+- 4.1 任务操作 ✅(认领/转办/委派/撤回):core + REST `/tasks/{id}/{claim,reassign,delegate,unclaim}` + SDK + 审计。**加签/会签**需 multi-instance BPMN(审方无 MI),留待带 MI 流程模板。
+- 4.2 SLA/超时 ✅:非阻塞边界定时器超时升级能力经 `TimerEscalationSpikeTest` 坐实(Flowable 7.1)。
+- 4.3 流程定义管理 ✅(Option-B 后端 + lite 前端):`/api/v1/admin/definitions`(部署/列表/挂起/恢复 + 审计)+ 运维面板「流程定义」Tab(粘贴 XML 部署)。**可视化拖拽设计器**(完整 bpmn-js Modeler)为剩余大前端特性,需单独走 frontend-plan。
 
 ## 5. 里程碑与顺序依赖
 
@@ -95,7 +94,13 @@
 
 ---
 
-**当前执行位置**:阶段一(P0)✅ 全部完成 → 阶段二 · **2.1 后端 ✅ 已完成**,前端面板待走 frontend-plan。
+**当前执行位置**:🎉 路线图**平台侧全部落地**。P0(1.1–1.4)✅、P1(2.1 运维面板 / 2.2 可观测性 / 2.3 HA / 2.4 契约治理)✅、P2(4.1 任务操作 / 4.2 SLA超时 / 4.3 定义管理)✅、阶段三 onboarding 配方 ✅。
+
+**剩余(非本仓库可完结)**:
+- **可视化流程设计器**(完整拖拽 Modeler):大前端特性,需单独 frontend-plan;当前已有 Option-B-lite(粘贴 XML 部署)与只读轨迹图。
+- **分布式追踪**:留作配置接入——生产接 OTLP 后端时加 `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` + `management.tracing.sampling`,Spring Boot observation 自动传播 HTTP/Kafka trace(不预埋以免无后端时空跑)。
+- **告警**:规则已给(`deploy/prometheus/alerts.yml`),接入需生产 Prometheus/Alertmanager。
+- **live 多流程场景 + 加签/会签**:需消费方 repo 适配 / 带 MI 的新流程模板。
 
 > P0 落地摘要:服务端 Casdoor JWT 鉴权(开关渐进)、DLQ 兜底+重放、后端镜像+compose 全栈、Flowable/wf_* 迁移版本化与干净库一键建表。全栈 `docker compose up` 未在本机执行(避免与运行中的 shadow :8300 抢端口),已过 config/build/迁移冒烟验证。详见 `deploy/README.md`。
 
