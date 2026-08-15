@@ -5,6 +5,7 @@ import ProtectedRoute from '../auth/ProtectedRoute'
 import AdminRoute from '../auth/AdminRoute'
 import AppLayout from '../components/layout/AppLayout'
 import CallbackPage from '../pages/CallbackPage'
+import LoginPage from '../pages/LoginPage'
 import TasksPage from '../pages/TasksPage'
 
 // 懒加载:轨迹页 bpmn chunk / 运维面板 admin chunk 不进待办首屏。
@@ -21,6 +22,8 @@ const lazyFallback = (
 // 数据式路由表。/callback 公开;其余在 ProtectedRoute(Stage 2 未登录跳 Casdoor)+ AppLayout 下。
 export const router = createBrowserRouter([
   { path: '/callback', element: <CallbackPage /> },
+  // 公开品牌登录页(ProtectedRoute 外,避免死循环);dev 免登录亦从此进。
+  { path: '/login', element: <LoginPage /> },
   {
     path: '/',
     element: (

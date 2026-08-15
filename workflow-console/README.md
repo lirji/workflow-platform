@@ -50,8 +50,21 @@ pnpm dev                       # http://localhost:5373
 
 ## 鉴权分期
 
-- **Stage 1(dev)**:`VITE_AUTH_ENABLED=false`。`ProtectedRoute` 放行,直连 :8300 联调,头部显示"开发模式·未鉴权"。
-- **Stage 2**:置 `true` + 配 Casdoor `client_id`。未登录跳 Casdoor;登录后按组门控;401 静默续期一次。
+- **Stage 1(dev)**:`VITE_AUTH_ENABLED=false`。`ProtectedRoute` 放行,直连 :8300 联调,头部显示"开发模式·未鉴权";`/login` 显示"开发模式·免登录"入口。
+- **Stage 2**:置 `true` + 配 Casdoor `client_id`。未登录 → 品牌登录页 `/login` → "使用统一身份登录" → Casdoor SSO(授权码+PKCE)→ `/callback` 回跳原深链;登录后按组门控(非 PHARMACIST/ADMIN→403);会话中途 401 静默续期一次,失败再交互式登录。
+
+### 登录页 `/login`(与其他平台一致)
+
+自建品牌登录页,范式沿用 his-web(左品牌渐变栏 + 右 SSO 认证卡),落到本项目 token(#315EFB / 圆角 8·12)。**纯 SSO**——workflow 后端是纯 Casdoor JWT Resource Server,无账号密码/本地账号库(与 his-web 账密登录不同,那是打 his 自己的后端)。`ProtectedRoute` 未登录 `<Navigate to="/login">`;登出后落 `/login`。计划见 `../docs/plans/console-oidc-login-0815-2234/`。
+
+### Casdoor OIDC 接入(Phase 2 启用 Runbook)
+
+登录页 + OIDC 接线已就绪(Phase 1),默认 `VITE_AUTH_ENABLED=false` 不影响 shadow。**真正启用鉴权**按下列步骤(需 Casdoor 管理 + 会打断明文头 shadow,择机分期):
+
+1. **Casdoor 注册 workflow-console 应用**:得 `client_id`;Redirect URLs 含 `<origin>/callback`;Post-logout 含 `<origin>/login`;grant=authorization_code + PKCE(public client,无 secret);**access_token 注入 `groups` claim** 且用户加入 `PHARMACIST`/`ADMIN` 组;scope `openid profile`。
+2. **前端 env**:`VITE_AUTH_ENABLED=true`、`VITE_CASDOOR_AUTHORITY=<issuer>`、`VITE_CASDOOR_CLIENT_ID=<client_id>`。
+3. **后端(会断 shadow 明文头路径,择机)**:`WORKFLOW_SECURITY_ENABLED=true` + `WORKFLOW_OIDC_JWKS=<Casdoor JWKS>`(或 `WORKFLOW_OIDC_ISSUER`);`WORKFLOW_TENANT_CLAIM` 留空则租户仍取 `X-Workflow-Tenant` 头。
+4. **验证**:未登录跳 `/login`→SSO→回调进站;admin 端点非 ADMIN→403;服务间调用(his-outpatient→:8300)改带 Bearer 或迁出。
 
 ### Casdoor 组 ↔ BPMN candidateGroups 映射
 

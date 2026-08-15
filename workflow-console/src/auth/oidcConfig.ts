@@ -6,7 +6,7 @@ export const oidcSettings: UserManagerSettings = {
   authority: config.casdoorAuthority,
   client_id: config.casdoorClientId,
   redirect_uri: `${window.location.origin}/callback`,
-  post_logout_redirect_uri: `${window.location.origin}/`,
+  post_logout_redirect_uri: `${window.location.origin}/login`,
   response_type: 'code',
   scope: config.oidcScope,
   loadUserInfo: false, // Casdoor 把 groups 放进 access_token,无需 userinfo(免额外 CORS)

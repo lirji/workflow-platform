@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { useLocation } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { Button, Result, Spin } from 'antd'
 import { config } from '../config'
 import { canRead, useAuthStore } from '../store/authStore'
@@ -15,19 +14,12 @@ const centered: React.CSSProperties = {
 
 /**
  * 路由守卫。Stage 1(authEnabled=false):直接放行,直连 :8300 联调。
- * Stage 2:未登录→跳 Casdoor;已登录但非 PHARMACIST/ADMIN→403。
+ * Stage 2:未登录→跳自建品牌登录页 /login(带 state.from 回跳原深链);已登录但非 PHARMACIST/ADMIN→403。
  */
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const location = useLocation()
   const authorities = useAuthStore((s) => s.authorities)
-
-  useEffect(() => {
-    if (!config.authEnabled) return
-    if (!auth.isLoading && !auth.isAuthenticated && !auth.activeNavigator && !auth.error) {
-      void auth.signinRedirect({ state: { returnTo: location.pathname } })
-    }
-  }, [auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error, location.pathname])
 
   // Stage 1:无鉴权直连联调。
   if (!config.authEnabled) return <>{children}</>
@@ -39,22 +31,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
       </div>
     )
   }
-  if (auth.error) {
-    return (
-      <Result
-        status="error"
-        title="登录失败"
-        subTitle={auth.error.message}
-        extra={<Button type="primary" onClick={() => void auth.signinRedirect()}>重试登录</Button>}
-      />
-    )
-  }
+  // 未登录/登录出错 → 落品牌登录页,由 /login 承载 SSO 入口与错误呈现;from 透传供回调回跳。
   if (!auth.isAuthenticated) {
-    return (
-      <div style={centered}>
-        <Spin size="large" tip="跳转登录..." />
-      </div>
-    )
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
   if (!canRead(authorities)) {
     return (

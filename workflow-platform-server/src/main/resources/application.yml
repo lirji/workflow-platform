@@ -1,5 +1,7 @@
 server:
   port: 8300
+  # Casdoor JWT(含 groups)约 9KB;不放大默认 8KB 上限会让合法 token 报 400(接入指南坑)。
+  max-http-request-header-size: 64KB
 
 spring:
   application:
