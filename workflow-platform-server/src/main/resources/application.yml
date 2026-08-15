@@ -34,6 +34,12 @@ workflow:
     # 监听重试总尝试次数(含初次);超限后由 recoverer 投 workflow.dlq.v1。
     max-attempts: 3
     backoff-ms: 1000
+  flowable:
+    # 异步执行器线程池调优(按部署压测结果调整;多副本时每副本各一套池)。
+    async-core-pool: ${WORKFLOW_ASYNC_CORE_POOL:8}
+    async-max-pool: ${WORKFLOW_ASYNC_MAX_POOL:8}
+    async-queue-size: ${WORKFLOW_ASYNC_QUEUE:100}
+    async-max-jobs-per-acquisition: ${WORKFLOW_ASYNC_MAX_JOBS:8}
   security:
     # 鉴权分期:默认关(保 shadow 联调明文头路径);生产置 true 接 Casdoor JWT。
     enabled: ${WORKFLOW_SECURITY_ENABLED:false}
@@ -47,8 +53,8 @@ workflow:
 flowable:
   # dev 默认 true(引擎自建/升级 ACT_*);生产置 false —— 用固化官方 DDL 初始化 ACT_*(见 ADR 0001 / deploy/postgres/flowable-7.1.0)。
   database-schema-update: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:true}
-  # server 承载运行时,开启 async executor 驱动 timer/异步任务
-  async-executor-activate: true
+  # server 承载运行时,开启 async executor 驱动 timer/异步任务(多副本各自运行,作业获取用 ACT_RU_JOB 锁多节点安全)
+  async-executor-activate: ${WORKFLOW_ASYNC_EXECUTOR:true}
   # 自动部署由 admin 负责;server 不从 classpath 自动部署,避免双写
   check-process-definitions: false
 

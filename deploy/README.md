@@ -36,6 +36,31 @@ curl -s localhost:${WORKFLOW_SERVER_PORT:-8300}/actuator/health   # {"status":"U
 - **告警规则**:`deploy/prometheus/alerts.yml`(DLQ 落地、关联不匹配、终态失败、驳回率、server down),挂到 Prometheus `rule_files`。
 - **生命周期事件**:server best-effort 投 `workflow.lifecycle.v1`(STARTED/COMPLETED/INCIDENT),供看板/观察者订阅(不参与正确性)。
 
+## HA / 水平扩展
+
+server 无状态,可多副本水平扩展。多副本下的正确性由以下机制保证(**均已实现**):
+- **outbox**:`claimBatch` 用 `FOR UPDATE SKIP LOCKED` + 租约(lease_owner/lease_until)领取,多副本各领不相交批次,不重复发送;发送失败释放租约重投(至少一次)。
+- **inbox**:按 `eventId` 主键去重(至少一次投递收敛为幂等);业务再按 `actionId` 二次幂等。
+- **Flowable 作业**:每副本各跑一套 async executor,作业获取用 `ACT_RU_JOB` 悲观锁,多节点安全(不会重复执行同一 job)。
+- **发起幂等**:`wf_process_link` 四元组唯一 + WAITING_USER 偏唯一约束,并发发起收敛到一个实例。
+
+### 调优(按压测结果调整)
+| 项 | 环境变量 | 默认 |
+|---|---|---|
+| async executor 核心/最大线程 | `WORKFLOW_ASYNC_CORE_POOL` / `WORKFLOW_ASYNC_MAX_POOL` | 8 / 8 |
+| async executor 队列 / 每次获取作业数 | `WORKFLOW_ASYNC_QUEUE` / `WORKFLOW_ASYNC_MAX_JOBS` | 100 / 8 |
+| outbox 批量 / 轮询 / 租约 | `workflow.outbox.*`(batch-size/poll-ms/lease-seconds) | 100 / 1000 / 30 |
+| DLQ 重试 / 退避 | `workflow.dlq.*`(max-attempts/backoff-ms) | 3 / 1000 |
+
+### 水平扩展方式
+compose 用固定 `container_name`/端口,不能直接 `--scale`;生产用 K8s Deployment `replicas>1`(去掉固定名/用 Service 负载均衡),或去掉 compose 的 container_name + 用端口范围。所有副本连同一 PG + Kafka。
+
+### 压测方案(需多节点环境执行,本仓库不含负载环境)
+1. 起 N(≥2)个 server 副本 + 1 PG + Kafka;用 `deploy/scripts/shadow-e2e-smoke.sh` 造种子,批量发 `command.start`(如 1k~10k 不同 businessKey)。
+2. 观测 `/actuator/prometheus`:`workflow_process_started_total`、outbox 积压(`wf_outbox_event status=READY` 计数)、关联结果分布、无 `ACTION_MISMATCH`。
+3. 断言:实例数 == 发起数(幂等无重复/丢失)、每 businessKey 恰一待办、outbox 最终清空、无重复 Kafka 消费(inbox 去重)。
+4. 混沌:压测中 `kill` 一个副本,验证租约到期后另一副本接管未发 outbox、Flowable 作业不重复执行。
+
 ## Schema 与迁移(ADR 0001)
 
 两类表分开管理:

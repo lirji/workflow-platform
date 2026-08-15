@@ -69,7 +69,7 @@
   - **结构化审计 ✅**:`WorkflowAudit`(独立 logger WORKFLOW_AUDIT)记审方完成/运维干预/DLQ 重放。
   - **待做**:lifecycle.v1 事件生产(供外部观察者)、分布式追踪、关键告警规则。
 - 2.4 契约治理 ✅:`ContractGoldenTest`(protocol)钉死所有对外 record(events + API DTOs)顶层字段集,改字段即 `mvn test` 失败→强制版本化;CI 即跨仓库契约门禁。接入指南 §7 已记。
-- 2.3 HA:待做。
+- 2.3 HA ✅(代码+文档;真机集群压测需负载环境):outbox 已 `FOR UPDATE SKIP LOCKED`+租约、inbox eventId 去重、Flowable 作业 ACT_RU_JOB 锁、发起四元组唯一——多副本天然安全;Flowable 异步执行器线程池外部化可调(`WORKFLOW_ASYNC_*`);deploy/README 记 HA 机制/扩展方式/压测方案。
 - 2.2 可观测性:消费 `lifecycle.v1` + Micrometer/Prometheus 指标 + 结构化审计日志 + 关键告警
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)
