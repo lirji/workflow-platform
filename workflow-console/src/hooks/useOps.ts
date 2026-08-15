@@ -1,9 +1,13 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  activateDefinition,
   activateInstance,
+  deployDefinition,
   findDeadLetterJobs,
   findInstances,
+  listDefinitions,
   retryJob,
+  suspendDefinition,
   suspendInstance,
   terminateInstance,
   type FindInstancesParams,
@@ -13,6 +17,7 @@ import { listDlq, replayAllDlq, replayDlq } from '../api/dlq'
 export const INSTANCES_KEY = 'admin-instances'
 export const DLJOBS_KEY = 'dead-letter-jobs'
 export const DLQ_KEY = 'dlq'
+export const DEFS_KEY = 'admin-definitions'
 
 // ---- 查询 ----
 export function useInstances(params: FindInstancesParams) {
@@ -85,5 +90,38 @@ export function useReplayAllDlq() {
   return useMutation({
     mutationFn: () => replayAllDlq(),
     onSuccess: () => qc.invalidateQueries({ queryKey: [DLQ_KEY] }),
+  })
+}
+
+// ---- 流程定义 ----
+export function useDefinitions() {
+  return useQuery({
+    queryKey: [DEFS_KEY],
+    queryFn: () => listDefinitions(),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useDeployDefinition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, bpmnXml }: { name: string; bpmnXml: string }) => deployDefinition(name, bpmnXml),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [DEFS_KEY] }),
+  })
+}
+
+export function useSuspendDefinition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => suspendDefinition(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [DEFS_KEY] }),
+  })
+}
+
+export function useActivateDefinition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => activateDefinition(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [DEFS_KEY] }),
   })
 }

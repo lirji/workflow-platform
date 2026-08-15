@@ -4,8 +4,9 @@ import { PageHeader } from '../components/layout/PageHeader'
 import InstancesPanel from '../components/ops/InstancesPanel'
 import DeadLetterPanel from '../components/ops/DeadLetterPanel'
 import DlqPanel from '../components/ops/DlqPanel'
+import DefinitionsPanel from '../components/ops/DefinitionsPanel'
 
-const TABS = ['instances', 'jobs', 'dlq']
+const TABS = ['instances', 'jobs', 'dlq', 'definitions']
 
 /** 运维面板(ADMIN):实例运维 / 死信作业 / DLQ 死信。?tab= 深链,非法值回退 instances。 */
 export default function OpsPage() {
@@ -24,6 +25,7 @@ export default function OpsPage() {
           { key: 'instances', label: '实例运维', children: <InstancesPanel /> },
           { key: 'jobs', label: '死信作业', children: <DeadLetterPanel /> },
           { key: 'dlq', label: 'DLQ 死信', children: <DlqPanel /> },
+          { key: 'definitions', label: '流程定义', children: <DefinitionsPanel /> },
         ]}
       />
     </>

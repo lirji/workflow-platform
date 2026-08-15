@@ -85,6 +85,17 @@ export interface DlqReplayResult {
   error?: string
 }
 
+/** 流程定义视图(部署/版本管理)。对应 server/admin ProcessDefinitionView。 */
+export interface ProcessDefinitionView {
+  id: string
+  key: string
+  name: string | null
+  version: number
+  tenantId: string | null
+  suspended: boolean
+  deploymentId: string
+}
+
 /** 流程轨迹条目(只读)。对应 protocol TimelineEntry(来源 Flowable HistoryService)。 */
 export interface TimelineEntry {
   activityId: string

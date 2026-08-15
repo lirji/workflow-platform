@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { DeadLetterJobView, ProcessInstanceView } from './types'
+import type { DeadLetterJobView, ProcessDefinitionView, ProcessInstanceView } from './types'
 
 // 运维实例/作业(需 ADMIN,鉴权启用时)。租户头由 apiClient 单点注入,勿在此手动加。
 
@@ -48,4 +48,28 @@ export async function retryJob(jobId: string, retries = 3): Promise<void> {
   await apiClient.post(`/api/v1/admin/jobs/${encodeURIComponent(jobId)}/retry`, null, {
     params: { retries },
   })
+}
+
+// ---- 流程定义部署/版本管理(Option B) ----
+
+/** 列流程定义。GET /api/v1/admin/definitions */
+export async function listDefinitions(): Promise<ProcessDefinitionView[]> {
+  const { data } = await apiClient.get<ProcessDefinitionView[]>('/api/v1/admin/definitions')
+  return data
+}
+
+/** 部署 BPMN XML。POST /api/v1/admin/definitions/deploy */
+export async function deployDefinition(name: string, bpmnXml: string): Promise<ProcessDefinitionView> {
+  const { data } = await apiClient.post<ProcessDefinitionView>('/api/v1/admin/definitions/deploy', { name, bpmnXml })
+  return data
+}
+
+/** 挂起定义(该定义不可再发起新实例)。POST /api/v1/admin/definitions/{id}/suspend */
+export async function suspendDefinition(id: string): Promise<void> {
+  await apiClient.post(`/api/v1/admin/definitions/${encodeURIComponent(id)}/suspend`)
+}
+
+/** 恢复定义。POST /api/v1/admin/definitions/{id}/activate */
+export async function activateDefinition(id: string): Promise<void> {
+  await apiClient.post(`/api/v1/admin/definitions/${encodeURIComponent(id)}/activate`)
 }
