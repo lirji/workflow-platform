@@ -30,6 +30,10 @@ workflow:
     batch-size: 100
     poll-ms: 1000
     lease-seconds: 30
+  dlq:
+    # 监听重试总尝试次数(含初次);超限后由 recoverer 投 workflow.dlq.v1。
+    max-attempts: 3
+    backoff-ms: 1000
   security:
     # 鉴权分期:默认关(保 shadow 联调明文头路径);生产置 true 接 Casdoor JWT。
     enabled: ${WORKFLOW_SECURITY_ENABLED:false}

@@ -56,7 +56,7 @@
 | 序 | 工作项 | 关键设计 | 验收 |
 |---|---|---|---|
 | 1.1 ✅ | **服务端 Casdoor JWT 鉴权**(已完成) | OAuth2 Resource Server 校验 Casdoor JWT;开关 `workflow.security.enabled`(默认 false 保 shadow 联调);启用时 tenant/actor **从 JWT 派生**覆盖明文头/请求体;groups claim 归一化为权限 | ✅ 关=12 测试全绿;开=无 token 401、带 JWT 200、actor 由 JWT 派生覆盖伪造请求体 |
-| 1.2 | **DLQ 消费 + 重放** | 超限/毒消息进 `workflow.dlq.v1`;落库 + 手工/批量重放入口 | 毒消息不阻塞主流;可重放 |
+| 1.2 ✅ | **DLQ 消费 + 重放**(已完成) | DefaultErrorHandler 重试超限 → recoverer 投 `workflow.dlq.v1`;DlqListener 落库 `wf_dlq_event`;DlqReplayService + `/api/v1/dlq`(列/重放/批量重放),重放投回原 topic 由原监听幂等消费 | ✅ 单元/切片测试全绿;V2 迁移在真库应用通过。DLQ 路由本身走 compose 冒烟(与既有 Kafka 测试策略一致) |
 | 1.3 | **后端 Dockerfile + compose 补全** | server/admin 镜像;compose 补 kafka/nacos(或文档化外部依赖) | `docker compose up` 起全栈 |
 | 1.4 | **DB 迁移版本化** | 自有表(outbox/inbox/process_link)+ Flowable schema 迁移策略 | 干净库一键建表 |
 
@@ -87,7 +87,10 @@
 
 ---
 
-**当前执行位置**:阶段一 · 1.1 ✅ 已完成 → 下一步 1.2 DLQ 消费 + 重放。
+**当前执行位置**:阶段一 · 1.1 ✅ + 1.2 ✅ 已完成 → 下一步 1.3 后端 Dockerfile + compose 补全。
+
+> 1.2 落地说明:`workflow.dlq.max-attempts`(默认 3)/`backoff-ms`。超限入 `workflow.dlq.v1` → `wf_dlq_event` 落库;
+> 运维 REST `GET /api/v1/dlq`、`POST /api/v1/dlq/{id}/replay`、`POST /api/v1/dlq/replay-all`。DLQ 面板留 P1(2.1)。
 
 > 1.1 落地说明:`workflow.security.enabled` 开关(默认 false)。启用需配 `WORKFLOW_OIDC_JWKS`(或 `WORKFLOW_OIDC_ISSUER`);
 > 租户派生需配 `WORKFLOW_TENANT_CLAIM`(未配则仍取 `X-Workflow-Tenant` 头,不臆造 Casdoor 租户映射)。
