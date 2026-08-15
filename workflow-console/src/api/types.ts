@@ -53,6 +53,36 @@ export interface ProcessInstanceView {
   phase: string
   status: string
   running: boolean
+  /** Flowable 挂起态(与 phase 正交)。挂起的实例 running 仍为 true。 */
+  suspended: boolean
+}
+
+/** Flowable 死信作业视图。对应 server/admin DeadLetterJobView。 */
+export interface DeadLetterJobView {
+  jobId: string
+  processInstanceId: string
+  elementId: string
+  retries: number
+  exceptionMessage: string | null
+}
+
+/** DLQ(Kafka)死信记录。对应 core/dlq DlqRecord。payload 是原始 JSON envelope(可能很大)。 */
+export interface DlqRecord {
+  id: number
+  originalTopic: string
+  msgKey: string | null
+  payload: string
+  errorMessage: string | null
+  status: string
+  failedAtEpochMs: number | null
+  replayedAtEpochMs: number | null
+}
+
+/** DLQ 单条重放结果。200→{id,status:'REPLAYED'};404→{id,error,message}(由 axios reject,调用方按 statusOf===404 处理)。 */
+export interface DlqReplayResult {
+  id: number
+  status?: 'REPLAYED'
+  error?: string
 }
 
 /** 流程轨迹条目(只读)。对应 protocol TimelineEntry(来源 Flowable HistoryService)。 */

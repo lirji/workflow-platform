@@ -2,12 +2,14 @@ import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { Spin } from 'antd'
 import ProtectedRoute from '../auth/ProtectedRoute'
+import AdminRoute from '../auth/AdminRoute'
 import AppLayout from '../components/layout/AppLayout'
 import CallbackPage from '../pages/CallbackPage'
 import TasksPage from '../pages/TasksPage'
 
-// 轨迹页懒加载:bpmn-js chunk 不进待办主路径首屏(评审 C2 / FINAL_PLAN §3)。
+// 懒加载:轨迹页 bpmn chunk / 运维面板 admin chunk 不进待办首屏。
 const ProcessTracePage = lazy(() => import('../pages/ProcessTracePage'))
+const OpsPage = lazy(() => import('../pages/OpsPage'))
 
 const lazyFallback = (
   <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -30,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'tasks', element: <TasksPage /> },
       { path: 'tasks/:taskId', element: <TasksPage /> },
       { path: 'process/:key', element: <Suspense fallback={lazyFallback}><ProcessTracePage /></Suspense> },
+      { path: 'ops', element: <AdminRoute><Suspense fallback={lazyFallback}><OpsPage /></Suspense></AdminRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/tasks" replace /> },

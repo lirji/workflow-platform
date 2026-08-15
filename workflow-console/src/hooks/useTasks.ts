@@ -26,14 +26,17 @@ export function useCompleteReview() {
 }
 
 /**
- * 办理后爆发轮询:短时间内高频 invalidate 待办列表以追最终一致(Kafka),到期停止;
- * 页面不可见(document.hidden)时跳过该次 invalidate(载荷退避,评审 B8)。
+ * 通用爆发式 invalidate:操作后短时间内高频 invalidate 指定 queryKey 以追最终一致(Kafka),到期停止;
+ * 页面不可见(document.hidden)时跳过该次 invalidate(载荷退避)。queryKey 用 ref 固定,避免数组字面量
+ * 每渲染身份变化重建定时器。
  */
-export function useTaskListSync(opts?: { totalMs?: number; intervalMs?: number }) {
+export function useBurstInvalidate(queryKey: readonly unknown[], opts?: { totalMs?: number; intervalMs?: number }) {
   const qc = useQueryClient()
   const [active, setActive] = useState(false)
   const timer = useRef<number | null>(null)
   const deadline = useRef(0)
+  const keyRef = useRef(queryKey)
+  keyRef.current = queryKey
   const totalMs = opts?.totalMs ?? 20_000
   const intervalMs = opts?.intervalMs ?? 2_500
 
@@ -51,7 +54,7 @@ export function useTaskListSync(opts?: { totalMs?: number; intervalMs?: number }
       return
     }
     if (document.visibilityState === 'visible') {
-      void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
+      void qc.invalidateQueries({ queryKey: keyRef.current })
     }
     timer.current = window.setTimeout(tick, intervalMs)
   }, [qc, stop, intervalMs])
@@ -65,4 +68,9 @@ export function useTaskListSync(opts?: { totalMs?: number; intervalMs?: number }
 
   useEffect(() => () => stop(), [stop])
   return { active, start, stop }
+}
+
+/** 办理后爆发轮询待办列表(泛化 useBurstInvalidate 的薄封装,保持既有调用/测试不变)。 */
+export function useTaskListSync(opts?: { totalMs?: number; intervalMs?: number }) {
+  return useBurstInvalidate([TASKS_KEY], opts)
 }

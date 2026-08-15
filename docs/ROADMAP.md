@@ -61,9 +61,10 @@
 | 1.4 ✅ | **DB 迁移版本化**(已完成) | `wf_*` 由 Flyway(V1/V2);Flowable ACT_* 由 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE` 开关(dev=true 引擎自建 / 生产=false 用固化官方 DDL);compose 把 DDL 挂 initdb 实现干净库一键建表 | ✅ 迁移冒烟 7/0(应用全部 V*.sql、7 张 wf_ 表含 dlq、唯一约束);compose config 通过 |
 
 ### 阶段二 · 运维闭环(P1)—— 进行中
-- 2.1 admin 运维面板
-  - **后端 ✅**:`/api/v1/admin` 实例查询/incident 列表/挂起/恢复/终止、Flowable 死信作业列/重试;`/api/v1/admin/**` 与 `/api/v1/dlq/**` 需 **ADMIN** 权限(鉴权启用时)。测试:AdminOpsControllerTest 5 + AdminSecurityTest 3。
-  - **前端面板(待做)**:属中大型前端特性,先走 `frontend-plan` 再实施(实例运维 + incident + 死信/DLQ 重放页)。
+- 2.1 admin 运维面板 ✅(后端 + 前端)
+  - **后端 ✅**:`/api/v1/admin` 实例查询/incident/挂起/恢复/终止、死信作业列/重试;`/api/v1/admin/**`+`/api/v1/dlq/**` 需 ADMIN。companion:`ProcessInstanceView.suspended` + Flowable NotFound→404。
+  - **前端 ✅**(经 frontend-plan `docs/plans/workflow-console-ops-0815-1938/`):`/ops` 单页 Tabs(实例运维含 phase/INCIDENT 筛选 + 挂起/恢复/终止[reason 必填]/看轨迹;死信作业列/重试;DLQ 列/单条+批量重放),ADMIN 门控(dev 逃生门)、诚实异步文案、爆发式刷新。28 Vitest + Playwright 冒烟 + 真机门控/结构验证。**注**:数据需 :8300 部署含 admin 端点的新代码(当前 shadow 实例为旧代码)。
+- 2.2 可观测性/审计、2.3 HA、2.4 契约治理:待做。
 - 2.2 可观测性:消费 `lifecycle.v1` + Micrometer/Prometheus 指标 + 结构化审计日志 + 关键告警
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)

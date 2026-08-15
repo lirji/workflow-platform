@@ -12,7 +12,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from 'react-oidc-context'
 import { NAV, NAV_GROUPS } from '../../nav'
 import { config } from '../../config'
-import { useAuthStore } from '../../store/authStore'
+import { isAdmin, useAuthStore } from '../../store/authStore'
 import { colors } from '../../theme/colors'
 
 export default function AppLayout() {
@@ -20,19 +20,23 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const auth = useAuth()
   const username = useAuthStore((s) => s.username)
+  const authorities = useAuthStore((s) => s.authorities)
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.lg
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  // /tasks/:id、/process/:key 归到对应菜单项(前缀匹配)。
+  // /tasks/:id、/process/:key、/ops 归到对应菜单项(前缀匹配)。
   const current = NAV.find((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))
 
+  // adminOnly 项仅 ADMIN 可见(dev 无鉴权放行);过滤后剔除空分组,避免渲染空标题。
+  const canSeeAdmin = !config.authEnabled || isAdmin(authorities)
+  const visibleNav = NAV.filter((n) => !n.adminOnly || canSeeAdmin)
   const menuItems = NAV_GROUPS.map((g) => ({
     type: 'group' as const,
     key: g,
     label: g,
-    children: NAV.filter((n) => n.group === g).map((n) => ({ key: n.path, icon: n.icon, label: n.label })),
-  }))
+    children: visibleNav.filter((n) => n.group === g).map((n) => ({ key: n.path, icon: n.icon, label: n.label })),
+  })).filter((grp) => grp.children.length > 0)
 
   const menu = (afterClick?: () => void) => (
     <Menu
