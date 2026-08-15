@@ -1,0 +1,51 @@
+# 流程/审批中台 Prometheus 告警规则(挂到 Prometheus rule_files)。
+# 指标来源:workflow-platform-server /actuator/prometheus(WorkflowMetrics)。
+groups:
+  - name: workflow-platform
+    rules:
+      - alert: WorkflowDlqLanding
+        expr: increase(workflow_dlq_landed_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "有消息进入 DLQ 死信队列"
+          description: "近 5 分钟有 {{ $value }} 条消息进入 workflow.dlq.v1(topic={{ $labels.topic }})。需排查毒消息并考虑重放。"
+
+      - alert: WorkflowCorrelationMismatch
+        expr: increase(workflow_correlation_outcome_total{outcome="ACTION_MISMATCH"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "消息关联 actionId 不匹配(P0 一致性风险)"
+          description: "近 10 分钟出现 {{ $value }} 次关联 actionId 不匹配,可能存在乱序/重复投递或状态错乱。"
+
+      - alert: WorkflowActionFailedFinal
+        expr: increase(workflow_action_applied_total{status="FAILED_FINAL"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "业务落地终态失败(流程进 incident)"
+          description: "近 10 分钟有 {{ $value }} 次业务落地 FAILED_FINAL,对应实例进入人工处置。"
+
+      - alert: WorkflowRejectRateHigh
+        expr: |
+          sum(increase(workflow_review_completed_total{decision="REJECT"}[30m]))
+            / clamp_min(sum(increase(workflow_review_completed_total[30m])), 1) > 0.5
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "审方驳回率偏高(>50%)"
+          description: "近 30 分钟审方驳回占比 {{ $value | humanizePercentage }},关注医嘱质量或规则误伤。"
+
+      - alert: WorkflowServerDown
+        expr: up{job="workflow-platform-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "workflow-platform-server 不可达"
+          description: "中台 server 抓取失败超过 1 分钟。"

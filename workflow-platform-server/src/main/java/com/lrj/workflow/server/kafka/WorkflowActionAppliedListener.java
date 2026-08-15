@@ -23,13 +23,16 @@ public class WorkflowActionAppliedListener {
     private final InboxEventRepository inbox;
     private final MessageCorrelationService correlation;
     private final WorkflowMetrics metrics;
+    private final LifecyclePublisher lifecycle;
 
     public WorkflowActionAppliedListener(EnvelopeCodec codec, InboxEventRepository inbox,
-                                         MessageCorrelationService correlation, WorkflowMetrics metrics) {
+                                         MessageCorrelationService correlation, WorkflowMetrics metrics,
+                                         LifecyclePublisher lifecycle) {
         this.codec = codec;
         this.inbox = inbox;
         this.correlation = correlation;
         this.metrics = metrics;
+        this.lifecycle = lifecycle;
     }
 
     @KafkaListener(topics = WorkflowTopics.ACTION_APPLIED, groupId = "workflow-server")
@@ -43,7 +46,16 @@ public class WorkflowActionAppliedListener {
             var outcome = correlation.correlate(env.payload());
             metrics.correlationOutcome(outcome.name());
             if (outcome == MessageCorrelationService.Outcome.CORRELATED && env.payload().status() != null) {
-                metrics.actionApplied(env.payload().status().name());
+                var p = env.payload();
+                metrics.actionApplied(p.status().name());
+                String lc = switch (p.status()) {
+                    case APPLIED -> "COMPLETED";
+                    case FAILED_FINAL -> "INCIDENT";
+                    default -> null;
+                };
+                if (lc != null) {
+                    lifecycle.publish(env.tenantId(), p.processInstanceId(), p.processDefinitionKey(), p.businessKey(), lc);
+                }
             }
             if (outcome == MessageCorrelationService.Outcome.WAITING_SUBSCRIPTION) {
                 inbox.markWaitingCorrelation(env.eventId(), 5, "message 订阅未就绪");

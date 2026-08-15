@@ -29,6 +29,13 @@ curl -s localhost:${WORKFLOW_SERVER_PORT:-8300}/actuator/health   # {"status":"U
 
 生产置 `WORKFLOW_SECURITY_ENABLED=true` 并配 `WORKFLOW_OIDC_JWKS`(Casdoor JWKS);租户从 JWT 派生需配 `WORKFLOW_TENANT_CLAIM`。详见 `docs/integration-guide.md` §4.3。
 
+## 监控与告警
+
+- **指标**:`workflow-platform-server` 暴露 `/actuator/prometheus`(WorkflowMetrics:发起/审方完成/落地/关联结果/DLQ/运维 计数器)。Prometheus 抓取 job 建议名 `workflow-platform-server`。
+- **审计日志**:独立 logger `WORKFLOW_AUDIT`(key=value),记审方完成/运维干预/DLQ 重放,建议单独采集分流。
+- **告警规则**:`deploy/prometheus/alerts.yml`(DLQ 落地、关联不匹配、终态失败、驳回率、server down),挂到 Prometheus `rule_files`。
+- **生命周期事件**:server best-effort 投 `workflow.lifecycle.v1`(STARTED/COMPLETED/INCIDENT),供看板/观察者订阅(不参与正确性)。
+
 ## Schema 与迁移(ADR 0001)
 
 两类表分开管理:

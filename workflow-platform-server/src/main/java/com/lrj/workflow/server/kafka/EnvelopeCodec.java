@@ -24,4 +24,12 @@ public class EnvelopeCodec {
             throw new IllegalArgumentException("解析事件信封失败: " + e.getMessage(), e);
         }
     }
+
+    public String toJson(Object envelope) {
+        try {
+            return mapper.writeValueAsString(envelope);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("序列化事件信封失败: " + e.getMessage(), e);
+        }
+    }
 }
