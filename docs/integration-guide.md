@@ -242,7 +242,7 @@ public void onActionRequested(String message) {
 ## 7. 参考实现与约束
 
 - **参考实现**：`his-platform` 审方场景（消费方适配器），是本中台的首个试点接入方。
-- **契约演进**：`EventEnvelopeV1.contractVersion` 固定 `1`；破坏性变更走新版本 topic（`*.v2`），并行灰度。
+- **契约演进**：`EventEnvelopeV1.contractVersion` 固定 `1`；破坏性变更走新版本 topic（`*.v2`），并行灰度。**契约门禁**：`ContractGoldenTest`（protocol 模块）钉死每个对外 record 的顶层字段集，任何增/删/改名都会让 `mvn test` 失败，强制显式版本化而非静默破坏——CI 即跨仓库契约守门。
 - **现状约束**：
   - SDK/protocol 为 `0.1.0-SNAPSHOT`，**未发布到公共仓库**（构建产物在本地 maven 仓库 `/Users/liruijun/personal/repository`）；外部项目引依赖前需能访问该仓库或内网 Nexus。
   - Kafka topic/序列化/inbox-outbox 需消费方自行落实（中台侧参考 `workflow-platform-server` 的 `WorkflowStartListener` / `WorkflowActionAppliedListener` 与 `EnvelopeCodec`）。
