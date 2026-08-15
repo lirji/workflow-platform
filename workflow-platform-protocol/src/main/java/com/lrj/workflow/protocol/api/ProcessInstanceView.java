@@ -11,6 +11,7 @@ public record ProcessInstanceView(
         String idempotencyKey,
         String phase,
         String status,
-        boolean running
+        boolean running,
+        boolean suspended
 ) {
 }

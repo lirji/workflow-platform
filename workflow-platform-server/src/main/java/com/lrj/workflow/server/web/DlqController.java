@@ -38,7 +38,8 @@ public class DlqController {
         boolean ok = dlq.replay(id);
         return ok
                 ? ResponseEntity.ok(Map.of("id", id, "status", "REPLAYED"))
-                : ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("id", id, "error", "NOT_FOUND_OR_ALREADY_REPLAYED"));
+                : ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "id", id, "error", "NOT_FOUND_OR_ALREADY_REPLAYED", "message", "死信记录不存在或已重放"));
     }
 
     @PostMapping("/replay-all")

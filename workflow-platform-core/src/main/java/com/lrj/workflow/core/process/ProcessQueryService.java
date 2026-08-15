@@ -54,9 +54,11 @@ public class ProcessQueryService {
     }
 
     private ProcessInstanceView toView(ProcessLink l) {
-        boolean running = runtimeService.createProcessInstanceQuery()
-                .processInstanceId(l.processInstanceId()).count() > 0;
+        org.flowable.engine.runtime.ProcessInstance pi = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(l.processInstanceId()).singleResult();
+        boolean running = pi != null;
+        boolean suspended = pi != null && pi.isSuspended();
         return new ProcessInstanceView(l.processInstanceId(), l.tenantId(), l.processDefinitionKey(),
-                l.businessKey(), l.idempotencyKey(), l.phase().name(), l.status(), running);
+                l.businessKey(), l.idempotencyKey(), l.phase().name(), l.status(), running, suspended);
     }
 }

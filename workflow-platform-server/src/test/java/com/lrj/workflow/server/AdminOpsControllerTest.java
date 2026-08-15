@@ -43,7 +43,7 @@ class AdminOpsControllerTest {
     @Test
     void listInstancesByPhase() throws Exception {
         when(query.search("his", null, "INCIDENT", 100)).thenReturn(List.of(
-                new ProcessInstanceView("pi1", "his", "hisRxReview", "90003", "cycle-1", "INCIDENT", "ERROR", true)));
+                new ProcessInstanceView("pi1", "his", "hisRxReview", "90003", "cycle-1", "INCIDENT", "ERROR", true, false)));
         mvc.perform(get("/api/v1/admin/incidents").header("X-Workflow-Tenant", "his"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].processInstanceId").value("pi1"))
