@@ -153,6 +153,33 @@ public interface WorkflowClient {
 
 `phase`（`ProcessInstanceView.phase`）：`WAITING_USER` / `WAITING_BUSINESS` / `COMPLETED` / `INCIDENT` / `CANCELLED`。
 
+### 4.3 服务端鉴权（与 `X-Workflow-Tenant` 的关系）
+
+REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUTH_ENABLED` 对齐）:
+
+| 阶段 | `enabled` | 调用方式 | tenant / actor 来源 |
+|---|---|---|---|
+| dev / shadow | `false`(默认) | 仅带 `X-Workflow-Tenant` 头 | 头 + 请求体 `actor*`(可信身份由消费方保证) |
+| 生产 | `true` | **额外带 `Authorization: Bearer <Casdoor JWT>`** | **从 JWT 派生并覆盖**头/请求体(防伪造);未认证→401 |
+
+启用后:
+- `/actuator/health|info|prometheus` 放行,其余 `/api/**` 需有效 JWT。
+- JWT 的 `groups` claim 经归一化(取路径末段、去 `<org>_` 前缀、大写)作为权限,与 BPMN candidateGroups(`PHARMACIST`/`ADMIN`)对齐。
+- `actor` 由 JWT 的 `sub`/`preferred_username`/`name` 派生,**覆盖请求体传入的 `actorSub` 等**(请求体 actor 仅在 `enabled=false` 生效)。
+- `tenant`:仅当配置了 `workflow.security.tenant-claim` 且 JWT 含该 claim 时从 JWT 取,否则仍用 `X-Workflow-Tenant` 头(不臆造 Casdoor 租户映射)。
+
+**服务端配置**(环境变量):
+
+| 配置(`workflow.security.*`) | 环境变量 | 说明 |
+|---|---|---|
+| `enabled` | `WORKFLOW_SECURITY_ENABLED` | 默认 false;生产 true |
+| `jwk-set-uri` | `WORKFLOW_OIDC_JWKS` | Casdoor JWKS(优先,lazy 不阻塞启动) |
+| `issuer-uri` | `WORKFLOW_OIDC_ISSUER` | 或用 issuer(启动拉 openid-config);与 jwks 二选一 |
+| `groups-claim` | `WORKFLOW_GROUPS_CLAIM` | 承载组的 claim,默认 `groups` |
+| `tenant-claim` | `WORKFLOW_TENANT_CLAIM` | 承载租户的 claim;空=仍取头 |
+
+> ⚠️ **SDK 现状**:`RemoteWorkflowClient` 暂未自动附带 `Authorization`(服务间鉴权待补,见 ROADMAP 阶段一)。因此在 `enabled=true` 环境下,消费方经 SDK 调用需自行注入服务令牌,或经带鉴权的网关转发;`enabled=false` 的联调环境不受影响。
+
 ## 5. 消费方代码骨架（示意）
 
 > 以下为**示意骨架**，字段以 protocol record 为准；消费方复用 `workflow-platform-protocol` 的 record + Jackson 即可。
@@ -208,6 +235,7 @@ public void onActionRequested(String message) {
 - [ ] **落地**：消费 `workflow.action.requested.v1`（自有 group）→ 按 `actionId` 幂等做副作用 → 事务内写 outbox → `workflow.action.applied.v1`。
 - [ ] 实现 inbox（按 `eventId` 去重）+ outbox（至少一次投递 + 重发）。
 - [ ] 所有 REST 调用带 `X-Workflow-Tenant`；配 `workflow.client.*`（若用 SDK）。
+- [ ] 生产环境(`workflow.security.enabled=true`):REST 调用额外带 `Authorization: Bearer <Casdoor JWT>`（见 §4.3）。
 - [ ] 待办 UI：接 workflow-console，或自建接 REST。
 
 ## 7. 参考实现与约束
