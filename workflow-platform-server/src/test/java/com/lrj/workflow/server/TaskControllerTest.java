@@ -2,11 +2,15 @@ package com.lrj.workflow.server;
 
 import com.lrj.workflow.core.task.TaskApplicationService;
 import com.lrj.workflow.protocol.api.TaskView;
+import com.lrj.workflow.server.security.WorkflowIdentityResolver;
+import com.lrj.workflow.server.security.WorkflowSecurityProperties;
 import com.lrj.workflow.server.web.TaskController;
 import com.lrj.workflow.server.web.WorkflowExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
@@ -21,9 +25,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** TaskController Web 层测试(mock service):查待办映射 + 办理返回 202/PENDING_BUSINESS。 */
+/** TaskController Web 层测试(mock service):查待办映射 + 办理返回 202/PENDING_BUSINESS。
+ * 关闭安全过滤器:本切片只测 Controller 逻辑,鉴权链由 WorkflowSecurityChainTest 覆盖。 */
 @WebMvcTest(TaskController.class)
-@Import(WorkflowExceptionHandler.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({WorkflowExceptionHandler.class, WorkflowIdentityResolver.class})
+@EnableConfigurationProperties(WorkflowSecurityProperties.class)
 class TaskControllerTest {
 
     @Autowired MockMvc mvc;

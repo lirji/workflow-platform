@@ -3,6 +3,7 @@ package com.lrj.workflow.server.web;
 import com.lrj.workflow.core.process.ProcessQueryService;
 import com.lrj.workflow.protocol.api.ProcessInstanceView;
 import com.lrj.workflow.protocol.api.TimelineEntry;
+import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,16 +22,18 @@ import java.util.List;
 public class ProcessController {
 
     private final ProcessQueryService query;
+    private final WorkflowIdentityResolver identity;
 
-    public ProcessController(ProcessQueryService query) {
+    public ProcessController(ProcessQueryService query, WorkflowIdentityResolver identity) {
         this.query = query;
+        this.identity = identity;
     }
 
     @GetMapping
     public List<ProcessInstanceView> byBusinessKey(@RequestHeader("X-Workflow-Tenant") String tenant,
                                                    @RequestParam String definitionKey,
                                                    @RequestParam String businessKey) {
-        return query.findByBusinessKey(tenant, definitionKey, businessKey);
+        return query.findByBusinessKey(identity.tenant(tenant), definitionKey, businessKey);
     }
 
     @GetMapping("/{id}")

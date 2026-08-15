@@ -1,5 +1,6 @@
 package com.lrj.workflow.server.web;
 
+import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.springframework.http.MediaType;
@@ -22,16 +23,18 @@ import java.nio.charset.StandardCharsets;
 public class DefinitionController {
 
     private final RepositoryService repositoryService;
+    private final WorkflowIdentityResolver identity;
 
-    public DefinitionController(RepositoryService repositoryService) {
+    public DefinitionController(RepositoryService repositoryService, WorkflowIdentityResolver identity) {
         this.repositoryService = repositoryService;
+        this.identity = identity;
     }
 
     @GetMapping(value = "/{key}/xml", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> xml(@RequestHeader("X-Workflow-Tenant") String tenant,
                                       @PathVariable String key) {
         ProcessDefinition def = repositoryService.createProcessDefinitionQuery()
-                .processDefinitionKey(key).processDefinitionTenantId(tenant)
+                .processDefinitionKey(key).processDefinitionTenantId(identity.tenant(tenant))
                 .latestVersion().singleResult();
         if (def == null) {
             return ResponseEntity.notFound().build();

@@ -55,7 +55,7 @@
 ### 阶段一 · 生产化基线(P0)—— 当前进行
 | 序 | 工作项 | 关键设计 | 验收 |
 |---|---|---|---|
-| 1.1 | **服务端 Casdoor JWT 鉴权** | OAuth2 Resource Server 校验 Casdoor JWT;开关 `workflow.security.enabled`(默认 false 保 shadow 联调);启用时 tenant/actor **从 JWT 派生**覆盖明文头;接口按候选组/角色授权 | 关=现有集成测试全绿;开=无 token 401、越权 403、tenant 从 JWT 取 |
+| 1.1 ✅ | **服务端 Casdoor JWT 鉴权**(已完成) | OAuth2 Resource Server 校验 Casdoor JWT;开关 `workflow.security.enabled`(默认 false 保 shadow 联调);启用时 tenant/actor **从 JWT 派生**覆盖明文头/请求体;groups claim 归一化为权限 | ✅ 关=12 测试全绿;开=无 token 401、带 JWT 200、actor 由 JWT 派生覆盖伪造请求体 |
 | 1.2 | **DLQ 消费 + 重放** | 超限/毒消息进 `workflow.dlq.v1`;落库 + 手工/批量重放入口 | 毒消息不阻塞主流;可重放 |
 | 1.3 | **后端 Dockerfile + compose 补全** | server/admin 镜像;compose 补 kafka/nacos(或文档化外部依赖) | `docker compose up` 起全栈 |
 | 1.4 | **DB 迁移版本化** | 自有表(outbox/inbox/process_link)+ Flowable schema 迁移策略 | 干净库一键建表 |
@@ -87,4 +87,8 @@
 
 ---
 
-**当前执行位置**:阶段一 · 1.1 服务端 Casdoor JWT 鉴权(开关渐进,保 shadow 联调不破)。
+**当前执行位置**:阶段一 · 1.1 ✅ 已完成 → 下一步 1.2 DLQ 消费 + 重放。
+
+> 1.1 落地说明:`workflow.security.enabled` 开关(默认 false)。启用需配 `WORKFLOW_OIDC_JWKS`(或 `WORKFLOW_OIDC_ISSUER`);
+> 租户派生需配 `WORKFLOW_TENANT_CLAIM`(未配则仍取 `X-Workflow-Tenant` 头,不臆造 Casdoor 租户映射)。
+> 与前端 `VITE_AUTH_ENABLED` 分期对齐。

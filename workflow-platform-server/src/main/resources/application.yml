@@ -30,6 +30,15 @@ workflow:
     batch-size: 100
     poll-ms: 1000
     lease-seconds: 30
+  security:
+    # 鉴权分期:默认关(保 shadow 联调明文头路径);生产置 true 接 Casdoor JWT。
+    enabled: ${WORKFLOW_SECURITY_ENABLED:false}
+    # issuer 与 jwks 二选一;优先 jwks(lazy,不阻塞启动)。
+    issuer-uri: ${WORKFLOW_OIDC_ISSUER:}
+    jwk-set-uri: ${WORKFLOW_OIDC_JWKS:}
+    groups-claim: ${WORKFLOW_GROUPS_CLAIM:groups}
+    # 为空则租户仍取 X-Workflow-Tenant 头(不臆造 Casdoor 租户映射,待明确后再启用)。
+    tenant-claim: ${WORKFLOW_TENANT_CLAIM:}
 
 flowable:
   # Phase 0 dev 允许引擎自建/升级 ACT_* 表以验证兼容;生产在锁版后改 false + 版本化官方 DDL(FINAL_PLAN §11.1)
