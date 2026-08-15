@@ -165,6 +165,7 @@ REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUT
 启用后:
 - `/actuator/health|info|prometheus` 放行,其余 `/api/**` 需有效 JWT。
 - JWT 的 `groups` claim 经归一化(取路径末段、去 `<org>_` 前缀、大写)作为权限,与 BPMN candidateGroups(`PHARMACIST`/`ADMIN`)对齐。
+- **运维/死信端点** `/api/v1/admin/**`、`/api/v1/dlq/**` 需 **ADMIN** 权限;其余 `/api/**` 需已认证。
 - `actor` 由 JWT 的 `sub`/`preferred_username`/`name` 派生,**覆盖请求体传入的 `actorSub` 等**(请求体 actor 仅在 `enabled=false` 生效)。
 - `tenant`:仅当配置了 `workflow.security.tenant-claim` 且 JWT 含该 claim 时从 JWT 取,否则仍用 `X-Workflow-Tenant` 头(不臆造 Casdoor 租户映射)。
 

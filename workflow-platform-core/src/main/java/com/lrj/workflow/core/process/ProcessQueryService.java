@@ -32,6 +32,11 @@ public class ProcessQueryService {
         return linkRepo.findByBusinessKey(tenant, defKey, bizKey).stream().map(this::toView).toList();
     }
 
+    /** 运维查询:按租户 +(可选)定义 key +(可选)阶段 列实例。 */
+    public List<ProcessInstanceView> search(String tenant, String defKey, String phase, int limit) {
+        return linkRepo.search(tenant, defKey, phase, limit).stream().map(this::toView).toList();
+    }
+
     public Optional<ProcessInstanceView> getInstance(String processInstanceId) {
         return linkRepo.findByInstanceId(processInstanceId).map(this::toView);
     }

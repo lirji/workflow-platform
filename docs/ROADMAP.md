@@ -60,8 +60,10 @@
 | 1.3 ✅ | **后端 Dockerfile + compose 补全**(已完成) | `deploy/Dockerfile` 多阶段(build 全 reactor → server/admin 双 target);compose 补 Kafka(KRaft 单节点)+ server(8300)+ admin(8301),healthcheck/depends_on 编排;端口全变量化 | ✅ `docker compose config` 通过 + `docker build server/admin` 全 reactor 在容器内构建成功。`up` 起栈步骤见 `deploy/README.md`(未在本机跑以免抢占运行中的 shadow :8300) |
 | 1.4 ✅ | **DB 迁移版本化**(已完成) | `wf_*` 由 Flyway(V1/V2);Flowable ACT_* 由 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE` 开关(dev=true 引擎自建 / 生产=false 用固化官方 DDL);compose 把 DDL 挂 initdb 实现干净库一键建表 | ✅ 迁移冒烟 7/0(应用全部 V*.sql、7 张 wf_ 表含 dlq、唯一约束);compose config 通过 |
 
-### 阶段二 · 运维闭环(P1)
-- 2.1 admin 运维面板:实例查询/挂起/终止/重试、**incident 处置**、DLQ 重放
+### 阶段二 · 运维闭环(P1)—— 进行中
+- 2.1 admin 运维面板
+  - **后端 ✅**:`/api/v1/admin` 实例查询/incident 列表/挂起/恢复/终止、Flowable 死信作业列/重试;`/api/v1/admin/**` 与 `/api/v1/dlq/**` 需 **ADMIN** 权限(鉴权启用时)。测试:AdminOpsControllerTest 5 + AdminSecurityTest 3。
+  - **前端面板(待做)**:属中大型前端特性,先走 `frontend-plan` 再实施(实例运维 + incident + 死信/DLQ 重放页)。
 - 2.2 可观测性:消费 `lifecycle.v1` + Micrometer/Prometheus 指标 + 结构化审计日志 + 关键告警
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)
@@ -87,7 +89,7 @@
 
 ---
 
-**当前执行位置**:🎉 **阶段一(P0 生产化基线)全部完成**(1.1 鉴权 + 1.2 DLQ + 1.3 部署件 + 1.4 迁移版本化)→ 下一步 **阶段二 · 2.1 admin 运维面板**。
+**当前执行位置**:阶段一(P0)✅ 全部完成 → 阶段二 · **2.1 后端 ✅ 已完成**,前端面板待走 frontend-plan。
 
 > P0 落地摘要:服务端 Casdoor JWT 鉴权(开关渐进)、DLQ 兜底+重放、后端镜像+compose 全栈、Flowable/wf_* 迁移版本化与干净库一键建表。全栈 `docker compose up` 未在本机执行(避免与运行中的 shadow :8300 抢端口),已过 config/build/迁移冒烟验证。详见 `deploy/README.md`。
 

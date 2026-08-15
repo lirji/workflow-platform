@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -72,6 +73,31 @@ public class ProcessLinkRepository {
                 "INSERT INTO wf_process_link(tenant_id,process_definition_key,business_key,idempotency_key,"
                         + "process_instance_id,phase,status) VALUES (?,?,?,?,?,?,?)",
                 tenant, defKey, bizKey, idemKey, processInstanceId, phase.name(), status);
+    }
+
+    /** 运维查询:按租户 +(可选)定义 key +(可选)阶段 列实例(最新在前,限量)。 */
+    public List<ProcessLink> search(String tenant, String defKey, String phase, int limit) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM wf_process_link WHERE tenant_id=?");
+        List<Object> args = new ArrayList<>();
+        args.add(tenant);
+        if (defKey != null && !defKey.isBlank()) {
+            sql.append(" AND process_definition_key=?");
+            args.add(defKey);
+        }
+        if (phase != null && !phase.isBlank()) {
+            sql.append(" AND phase=?");
+            args.add(phase);
+        }
+        sql.append(" ORDER BY id DESC LIMIT ?");
+        args.add(limit);
+        return jdbc.query(sql.toString(), MAPPER, args.toArray());
+    }
+
+    /** 运维强制置阶段(不做乐观锁,admin 终止/干预用)。返回命中行数。 */
+    public int markPhase(String processInstanceId, ProcessPhase phase) {
+        return jdbc.update(
+                "UPDATE wf_process_link SET phase=?, version=version+1, updated_at=now() WHERE process_instance_id=?",
+                phase.name(), processInstanceId);
     }
 
     /** 乐观锁更新阶段。返回是否命中(版本匹配)。 */
