@@ -232,3 +232,160 @@ public void onActionRequested(String message) {
 | 办理请求 | `api.CompleteReviewRequest` |
 | 实例视图 | `api.ProcessInstanceView` |
 | 轨迹条目 | `api.TimelineEntry` |
+
+## 附录 A · Kafka 消息样例（可直接用）
+
+序列化为 **JSON 字符串**（`String` value，非 Avro/JsonSerializer），字段名 camelCase、`occurredAt` 为 ISO-8601、枚举序列化为名字、`null` 字段保留。形状由 `ProtocolGoldenTest` 钉死，跨语言消费方可依赖这些字段名。
+
+### A.1 发起 `workflow.command.start.v1`（消费方 → 中台）
+
+```json
+{
+  "eventId": "3f9a1c2e-9b1a-4c7d-8e2f-1a2b3c4d5e6f",
+  "contractVersion": 1,
+  "eventType": "workflow.command.start.v1",
+  "occurredAt": "2026-08-15T02:00:00Z",
+  "source": "his-outpatient",
+  "tenantId": "his",
+  "correlationId": "corr-enc-90003",
+  "causationId": null,
+  "payload": {
+    "processDefinitionKey": "hisRxReview",
+    "businessKey": "90003",
+    "idempotencyKey": "90003-cycle-1",
+    "initiator": "his-outpatient",
+    "variables": { "encounterId": 90003, "reviewRound": 1, "amount": 128.50 }
+  }
+}
+```
+
+### A.2 请求落地 `workflow.action.requested.v1`（中台 → 消费方）
+
+```json
+{
+  "eventId": "7c2b6d41-2a55-4f0e-9b3c-0d1e2f3a4b5c",
+  "contractVersion": 1,
+  "eventType": "workflow.action.requested.v1",
+  "occurredAt": "2026-08-15T02:05:00Z",
+  "source": "workflow-server",
+  "tenantId": "his",
+  "correlationId": "corr-enc-90003",
+  "causationId": "3f9a1c2e-9b1a-4c7d-8e2f-1a2b3c4d5e6f",
+  "payload": {
+    "processInstanceId": "1d308cae-9881-11f1-92be-8664eb1595db",
+    "taskId": "1d31771a-9881-11f1-92be-8664eb1595db",
+    "taskDefinitionKey": "pharmacistReview",
+    "processDefinitionKey": "hisRxReview",
+    "businessKey": "90003",
+    "actionId": "act-9f3c1a20",
+    "action": "RX_REVIEW_PASS",
+    "actor": { "subjectId": "sub-123", "username": "pharma01", "displayName": "药师张三" },
+    "parameters": { "opinion": "同意发药" }
+  }
+}
+```
+
+### A.3 落地回执 `workflow.action.applied.v1`（消费方 → 中台）
+
+```json
+{
+  "eventId": "b81d7e90-6c34-4a12-8f5d-9e0a1b2c3d4e",
+  "contractVersion": 1,
+  "eventType": "workflow.action.applied.v1",
+  "occurredAt": "2026-08-15T02:05:03Z",
+  "source": "his-outpatient",
+  "tenantId": "his",
+  "correlationId": "corr-enc-90003",
+  "causationId": "7c2b6d41-2a55-4f0e-9b3c-0d1e2f3a4b5c",
+  "payload": {
+    "processInstanceId": "1d308cae-9881-11f1-92be-8664eb1595db",
+    "taskId": null,
+    "processDefinitionKey": "hisRxReview",
+    "businessKey": "90003",
+    "actionId": "act-9f3c1a20",
+    "status": "APPLIED",
+    "businessVersion": 7,
+    "errorCode": null,
+    "errorMessage": null
+  }
+}
+```
+> 驳回场景：`payload.action` = `RX_REVIEW_REJECT`；业务规则拒绝时回执 `status` = `REJECTED_BY_BUSINESS`；可重试失败 `FAILED_RETRYABLE`（消费方 outbox 重发）；终态失败 `FAILED_FINAL`（进 incident）。
+
+### A.4 手工投递测试（kafka-console-producer）
+
+```bash
+# 冒烟环境 Kafka 为 :9095(独立于其他项目的 :9092)。把上面的 JSON 存成单行文件再投:
+cat start-cmd.json | tr -d '\n' | kafka-console-producer \
+  --bootstrap-server localhost:9095 \
+  --topic workflow.command.start.v1
+
+# 生产环境用 key = tenant|definition|businessKey 保证同 businessKey 分区内有序:
+#   --property parse.key=true --property key.separator=$'\t'
+#   然后每行为:  his|hisRxReview|90003<TAB>{"eventId":...}
+```
+> 至少一次投递安全:中台先按 `eventId` inbox 去重,再按发起四元组幂等;重复投递不会重复启动流程。
+
+## 附录 B · 把 SDK 发布到内网 Nexus
+
+消费方要引 `workflow-platform-sdk` / `workflow-platform-protocol` 依赖,需先把制品发布到可访问的 Nexus。当前版本 `0.1.0-SNAPSHOT`、groupId `com.lrj.workflow`、Java 21。
+
+### B.1 中台侧:配置发布仓库(root `pom.xml`)
+
+```xml
+<distributionManagement>
+  <repository>
+    <id>nexus-releases</id>
+    <url>https://nexus.example.com/repository/maven-releases/</url>
+  </repository>
+  <snapshotRepository>
+    <id>nexus-snapshots</id>
+    <url>https://nexus.example.com/repository/maven-snapshots/</url>
+  </snapshotRepository>
+</distributionManagement>
+```
+
+`~/.m2/settings.xml` 配对应 `id` 的凭据(建议走环境变量,勿硬编码密码):
+
+```xml
+<servers>
+  <server><id>nexus-releases</id><username>${env.NEXUS_USER}</username><password>${env.NEXUS_PASS}</password></server>
+  <server><id>nexus-snapshots</id><username>${env.NEXUS_USER}</username><password>${env.NEXUS_PASS}</password></server>
+</servers>
+```
+
+### B.2 发布制品
+
+> 消费方只需 `protocol` + `sdk`(及父 pom);`server/core/admin` 无需外发。`-am` 会连带把它们依赖的父 pom / protocol 一起纳入。
+
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+
+# A. 快速(当前 0.1.0-SNAPSHOT)→ 发到 snapshots 仓库
+mvn -pl workflow-platform-protocol,workflow-platform-sdk -am deploy -DskipTests
+
+# B. 正式 release(供外部稳定引用)→ 去掉 -SNAPSHOT 发到 releases,再回滚到下一个开发版本
+mvn versions:set -DnewVersion=0.1.0
+mvn -pl workflow-platform-protocol,workflow-platform-sdk -am deploy -DskipTests
+mvn versions:set -DnewVersion=0.2.0-SNAPSHOT   # bump 回开发版
+```
+
+### B.3 消费方侧:配置解析仓库
+
+在消费方 `~/.m2/settings.xml` 或其 `pom.xml` 指向 Nexus 聚合仓库(maven-public 通常聚合 releases+snapshots):
+
+```xml
+<repositories>
+  <repository>
+    <id>nexus-public</id>
+    <url>https://nexus.example.com/repository/maven-public/</url>
+    <releases><enabled>true</enabled></releases>
+    <snapshots><enabled>true</enabled></snapshots>
+  </repository>
+</repositories>
+```
+
+之后即可正常 `mvn dependency:resolve` 拉到 `com.lrj.workflow:workflow-platform-sdk`。
+
+> 过渡期(未上 Nexus 前):可让消费方共享同一台机器的本地 maven 仓库
+> `-Dmaven.repo.local=/Users/liruijun/personal/repository`,或在中台侧执行 `mvn -pl ...-protocol,...-sdk -am install` 装进本地仓库供同机消费方解析。
