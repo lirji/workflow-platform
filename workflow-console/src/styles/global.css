@@ -1,0 +1,71 @@
+:root {
+  --app-content-max: 1440px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f5f7fa;
+}
+
+/* 内容区容器:居中 + 最大宽 + 响应式边距 */
+.app-content {
+  max-width: var(--app-content-max);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .app-content {
+    padding: 16px;
+  }
+}
+
+/* 等宽 / 长内容仅局部横向滚动,不触发页面级溢出 */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  font-weight: 700;
+  font-size: 15px;
+  color: #172033;
+  white-space: nowrap;
+}
+
+/* bpmn 只读容器 + 流程状态高亮(节点描边取语义色) */
+.bpmn-canvas {
+  background: #fff;
+  border-radius: 8px;
+}
+
+.wf-active:not(.djs-connection) .djs-visual > :nth-child(1) {
+  stroke: #315efb !important;
+  stroke-width: 2.5px !important;
+  fill: #eef3ff !important;
+}
+
+.wf-completed:not(.djs-connection) .djs-visual > :nth-child(1) {
+  stroke: #16a36a !important;
+  stroke-width: 2px !important;
+}
+
+.wf-incident:not(.djs-connection) .djs-visual > :nth-child(1) {
+  stroke: #d92d20 !important;
+  stroke-width: 2.5px !important;
+  fill: #fef3f2 !important;
+}
