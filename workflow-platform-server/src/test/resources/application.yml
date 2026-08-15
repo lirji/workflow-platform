@@ -8,6 +8,9 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+  flyway:
+    # H2 spike 不需要 wf_* 平台表(PG 专用 SQL);wf_* 迁移由 phase1-migration-smoke.sh / Testcontainers 覆盖
+    enabled: false
 
 flowable:
   database-schema-update: true

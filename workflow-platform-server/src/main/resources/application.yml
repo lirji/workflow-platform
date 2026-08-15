@@ -9,6 +9,10 @@ spring:
     username: ${WORKFLOW_DB_USER:workflow}
     password: ${WORKFLOW_DB_PASSWORD:workflow}
     driver-class-name: org.postgresql.Driver
+  flyway:
+    # 库里已有 Flowable 自建的 ACT_*,Flyway 首跑需 baseline 既有 schema 再应用 wf_* 迁移
+    baseline-on-migrate: true
+    baseline-version: 0
 
 flowable:
   # Phase 0 dev 允许引擎自建/升级 ACT_* 表以验证兼容;生产在锁版后改 false + 版本化官方 DDL(FINAL_PLAN §11.1)

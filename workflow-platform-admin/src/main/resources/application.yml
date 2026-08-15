@@ -9,6 +9,10 @@ spring:
     username: ${WORKFLOW_DB_USER:workflow}
     password: ${WORKFLOW_DB_PASSWORD:workflow}
     driver-class-name: org.postgresql.Driver
+  flyway:
+    # 与 server 同库;Flyway 锁保证并发/重复应用安全。baseline 既有 Flowable ACT_* schema。
+    baseline-on-migrate: true
+    baseline-version: 0
 
 flowable:
   # admin 与 server 连同一 workflow 库;生产由版本化 DDL/受控 migration 管 schema,admin 不自建

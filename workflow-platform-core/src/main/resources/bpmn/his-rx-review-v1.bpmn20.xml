@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             targetNamespace="http://lrj.com/workflow/his">
+
+  <!-- 业务落地 ACK 用 message(非 signal,避免广播给多个订阅者);按 executionId 精确关联 -->
+  <message id="msgRxReviewApplied" name="hisRxReviewApplied"/>
+
+  <!--
+    HIS 药师审方(v1)。ADR:回调以事件驱动为主 —— 人工节点 UserTask;审方结论写 outbox(prepareAction),
+    由消费方(his-outpatient)落地后回 message 结束流程;未落地一律进人工处置,绝不自动通过。
+    变量:encounterId,patientId,deptCode,doctorId,reviewRound,decision(PASS/REJECT),opinion,
+         actorSub,actorUsername,actionId,appliedStatus(由 ACK 回填)。
+  -->
+  <process id="hisRxReview" name="HIS 药师审方" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="f_start_review" sourceRef="start" targetRef="pharmacistReview"/>
+
+    <userTask id="pharmacistReview" name="药师审方" flowable:candidateGroups="PHARMACIST"/>
+    <sequenceFlow id="f_review_gw" sourceRef="pharmacistReview" targetRef="decisionGw"/>
+
+    <exclusiveGateway id="decisionGw" name="审方结论" default="f_decision_repair"/>
+    <sequenceFlow id="f_decision_action" sourceRef="decisionGw" targetRef="prepareAction">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'PASS' || decision == 'REJECT'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_decision_repair" sourceRef="decisionGw" targetRef="manualRepair"/>
+
+    <!-- 只写 outbox 数据(同一 PG 事务);实际 Kafka 发布由 outbox publisher 负责。delegate 见 Phase 2。 -->
+    <serviceTask id="prepareAction" name="登记业务动作(写 outbox)"
+                 flowable:delegateExpression="${rxReviewActionOutboxDelegate}"/>
+    <sequenceFlow id="f_action_wait" sourceRef="prepareAction" targetRef="waitApplied"/>
+
+    <intermediateCatchEvent id="waitApplied" name="等待业务落地 ACK">
+      <messageEventDefinition messageRef="msgRxReviewApplied"/>
+    </intermediateCatchEvent>
+    <sequenceFlow id="f_wait_appliedgw" sourceRef="waitApplied" targetRef="appliedGw"/>
+
+    <exclusiveGateway id="appliedGw" name="业务是否落地" default="f_applied_repair"/>
+    <sequenceFlow id="f_applied_end" sourceRef="appliedGw" targetRef="end">
+      <conditionExpression xsi:type="tFormalExpression">${appliedStatus == 'APPLIED'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_applied_repair" sourceRef="appliedGw" targetRef="manualRepair"/>
+
+    <userTask id="manualRepair" name="人工处置(不自动通过)" flowable:candidateGroups="ADMIN"/>
+    <sequenceFlow id="f_repair_end" sourceRef="manualRepair" targetRef="end"/>
+
+    <endEvent id="end"/>
+  </process>
+</definitions>
