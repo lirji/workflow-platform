@@ -45,8 +45,8 @@ workflow:
     tenant-claim: ${WORKFLOW_TENANT_CLAIM:}
 
 flowable:
-  # Phase 0 dev 允许引擎自建/升级 ACT_* 表以验证兼容;生产在锁版后改 false + 版本化官方 DDL(FINAL_PLAN §11.1)
-  database-schema-update: true
+  # dev 默认 true(引擎自建/升级 ACT_*);生产置 false —— 用固化官方 DDL 初始化 ACT_*(见 ADR 0001 / deploy/postgres/flowable-7.1.0)。
+  database-schema-update: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:true}
   # server 承载运行时,开启 async executor 驱动 timer/异步任务
   async-executor-activate: true
   # 自动部署由 admin 负责;server 不从 classpath 自动部署,避免双写

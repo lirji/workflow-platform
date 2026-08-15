@@ -28,3 +28,16 @@ curl -s localhost:${WORKFLOW_SERVER_PORT:-8300}/actuator/health   # {"status":"U
 ## 鉴权
 
 生产置 `WORKFLOW_SECURITY_ENABLED=true` 并配 `WORKFLOW_OIDC_JWKS`(Casdoor JWKS);租户从 JWT 派生需配 `WORKFLOW_TENANT_CLAIM`。详见 `docs/integration-guide.md` §4.3。
+
+## Schema 与迁移(ADR 0001)
+
+两类表分开管理:
+- **平台自有 `wf_*`**(process_link / inbox / outbox / dlq / task_authz_sync / deployment_audit / tenant_config):由 **Flyway** 版本化(`workflow-platform-core/.../db/migration/V*.sql`),应用启动时自动应用(baseline 既有 schema)。
+- **Flowable `ACT_*`**:dev 由引擎自建(`WORKFLOW_FLOWABLE_SCHEMA_UPDATE=true`);**生产置 `false`**,用固化的官方 DDL 初始化——`deploy/postgres/flowable-7.1.0/{engine,history}.sql`(锁定 7.1.0)。
+
+**干净库一键建表**:compose 把上述 Flowable DDL 挂到 postgres `docker-entrypoint-initdb.d`(仅空卷首次执行),应用启动再由 Flyway 建 `wf_*`。因此 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE=false` 下全新库也能一次起好。
+
+**迁移冒烟**(不依赖 Testcontainers,在运行中的 compose PG 上用 scratch 库):
+```bash
+bash deploy/scripts/phase1-migration-smoke.sh   # 应用全部 V*.sql,校验 7 张 wf_ 表 + 唯一/偏唯一约束
+```

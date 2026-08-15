@@ -15,6 +15,9 @@ services:
       - "${WORKFLOW_PG_PORT:-25432}:5432"
     volumes:
       - workflow-pg-data:/var/lib/postgresql/data
+      # 干净库一键建 Flowable ACT_*(固化官方 DDL,见 ADR 0001)。仅首次初始化空卷时执行;
+      # 生产 schema-update=false 时靠它初始化 ACT_*,wf_* 仍由应用 Flyway 建。
+      - ./postgres/flowable-7.1.0:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${WORKFLOW_PG_USER:-workflow} -d ${WORKFLOW_PG_DB:-workflow}"]
       interval: 5s
@@ -76,6 +79,8 @@ services:
       WORKFLOW_DB_USER: ${WORKFLOW_PG_USER:-workflow}
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_PG_PASSWORD:-workflow}
       WORKFLOW_KAFKA: kafka:9092
+      # 生产置 false(靠固化官方 DDL 初始化 ACT_*);dev 默认 true 由引擎自建。
+      WORKFLOW_FLOWABLE_SCHEMA_UPDATE: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:-true}
       WORKFLOW_SECURITY_ENABLED: ${WORKFLOW_SECURITY_ENABLED:-false}
       WORKFLOW_OIDC_JWKS: ${WORKFLOW_OIDC_JWKS:-}
       WORKFLOW_TENANT_CLAIM: ${WORKFLOW_TENANT_CLAIM:-}
@@ -102,6 +107,7 @@ services:
       WORKFLOW_DB_URL: jdbc:postgresql://postgres:5432/${WORKFLOW_PG_DB:-workflow}
       WORKFLOW_DB_USER: ${WORKFLOW_PG_USER:-workflow}
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_PG_PASSWORD:-workflow}
+      WORKFLOW_FLOWABLE_SCHEMA_UPDATE: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:-true}
     ports:
       - "${WORKFLOW_ADMIN_PORT:-8301}:8301"
     healthcheck:

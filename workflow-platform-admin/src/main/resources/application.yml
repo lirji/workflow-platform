@@ -15,8 +15,8 @@ spring:
     baseline-version: 0
 
 flowable:
-  # admin 与 server 连同一 workflow 库;生产由版本化 DDL/受控 migration 管 schema,admin 不自建
-  database-schema-update: true
+  # admin 与 server 连同一 workflow 库;dev 默认 true,生产置 false(用固化官方 DDL 初始化,见 ADR 0001)。
+  database-schema-update: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:true}
   # admin 只做部署/管理,不跑运行时作业
   async-executor-activate: false
   check-process-definitions: false

@@ -3,7 +3,7 @@
 # 与项目既有 deploy/*-smoke.sh 约定一致(不依赖 Testcontainers)。
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-MIG="$ROOT/workflow-platform-core/src/main/resources/db/migration/V1__workflow_platform_metadata.sql"
+MIGDIR="$ROOT/workflow-platform-core/src/main/resources/db/migration"
 CT=workflow-postgres
 DB=wf_smoke
 PU=workflow
@@ -16,12 +16,20 @@ echo "==> 重建 scratch 库 $DB"
 docker exec "$CT" psql -U "$PU" -d postgres -c "DROP DATABASE IF EXISTS $DB;" >/dev/null
 docker exec "$CT" psql -U "$PU" -d postgres -c "CREATE DATABASE $DB;" >/dev/null
 
-echo "==> 应用迁移 V1"
-if docker exec -i "$CT" psql -v ON_ERROR_STOP=1 -q -U "$PU" -d "$DB" < "$MIG" >/dev/null; then ok "迁移应用成功"; else no "迁移应用失败"; fi
+echo "==> 应用全部迁移(V*.sql 按版本序)"
+APPLY_OK=1
+for f in $(ls "$MIGDIR"/V*.sql | sort -V); do
+  if ! docker exec -i "$CT" psql -v ON_ERROR_STOP=1 -q -U "$PU" -d "$DB" < "$f" >/dev/null; then
+    APPLY_OK=0; echo "    应用失败: $(basename "$f")"
+  fi
+done
+[ "$APPLY_OK" = 1 ] && ok "全部迁移应用成功" || no "迁移应用失败"
 
-echo "==> 1) 六张 wf_ 表齐全"
+echo "==> 1) 七张 wf_ 表齐全(V1 六张 + V2 wf_dlq_event)"
 N=$(psql_db -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'wf_%';")
-[ "$N" = "6" ] && ok "wf_ 表数=6" || no "wf_ 表数=$N(期望6)"
+[ "$N" = "7" ] && ok "wf_ 表数=7" || no "wf_ 表数=$N(期望7)"
+DLQ=$(psql_db -c "SELECT count(*) FROM information_schema.tables WHERE table_name='wf_dlq_event';")
+[ "$DLQ" = "1" ] && ok "wf_dlq_event 存在" || no "wf_dlq_event 缺失"
 
 INS="INSERT INTO wf_process_link(tenant_id,process_definition_key,business_key,idempotency_key,process_instance_id,phase,status)"
 
