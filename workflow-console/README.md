@@ -3,8 +3,12 @@
 流程/审批中台管控台。本轮两页:**待办中心**(审方待办查看 + 办理)与**流程轨迹**(bpmn-js 只读渲染)。
 技术栈克隆自 `auth-console`(React18 + Vite5 + TS + antd5 + react-query + zustand + oidc-client-ts,pnpm)。
 
-后端:`workflow-platform-server`(REST :8300)。实施计划见
-`docs/plans/workflow-console-0815-1323/{DECISION_RECORD,FINAL_PLAN}.md`。
+后端:`workflow-platform-server`(REST :8300)。
+
+## 相关文档
+
+- 📘 **[工作流中台接入指南](../docs/integration-guide.md)** —— 其他业务系统如何接入中台(Kafka 事件契约、SDK/REST、发起/落地代码骨架、JSON 样例、Nexus 发布)。前端消费的 REST 端点、`X-Workflow-Tenant` 租户头、办理 202 最终一致语义均以该指南为准。
+- 实施计划:`../docs/plans/workflow-console-0815-1323/{DECISION_RECORD,FINAL_PLAN}.md`
 
 ## 快速开始(dev,无鉴权直连联调)
 
