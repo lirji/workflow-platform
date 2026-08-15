@@ -10,6 +10,7 @@ import TasksPage from '../pages/TasksPage'
 // 懒加载:轨迹页 bpmn chunk / 运维面板 admin chunk 不进待办首屏。
 const ProcessTracePage = lazy(() => import('../pages/ProcessTracePage'))
 const OpsPage = lazy(() => import('../pages/OpsPage'))
+const DesignerPage = lazy(() => import('../pages/DesignerPage'))
 
 const lazyFallback = (
   <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: 'tasks/:taskId', element: <TasksPage /> },
       { path: 'process/:key', element: <Suspense fallback={lazyFallback}><ProcessTracePage /></Suspense> },
       { path: 'ops', element: <AdminRoute><Suspense fallback={lazyFallback}><OpsPage /></Suspense></AdminRoute> },
+      { path: 'designer', element: <AdminRoute><Suspense fallback={lazyFallback}><DesignerPage /></Suspense></AdminRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/tasks" replace /> },

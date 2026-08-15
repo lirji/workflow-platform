@@ -26,8 +26,9 @@ export default defineConfig(({ mode }) => {
             antd: ['antd', '@ant-design/icons'],
             oidc: ['oidc-client-ts', 'react-oidc-context'],
             query: ['@tanstack/react-query'],
-            // bpmn 单独成块;真正不进首屏靠 BpmnViewer 的 React.lazy 动态 import
-            bpmn: ['bpmn-js'],
+            // bpmn 单独成块;真正不进首屏靠 BpmnViewer/DesignerPage 的 React.lazy 动态 import。
+            // 设计器属性面板(Scope C)一并归入 bpmn 块,只在进 /designer 时加载。
+            bpmn: ['bpmn-js', 'bpmn-js-properties-panel', '@bpmn-io/properties-panel'],
           },
         },
       },

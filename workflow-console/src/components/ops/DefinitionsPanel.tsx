@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { App, Button, Form, Input, Modal, Space, Table, Tag } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { EditOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { EmptyState, ErrorState, PageSkeleton } from '../common/AsyncState'
 import {
@@ -15,6 +16,7 @@ import type { ProcessDefinitionView } from '../../api/types'
 /** 流程定义部署/版本管理(Option B):粘贴 BPMN XML 部署 + 列出 + 挂起/恢复。可视化设计器为后续。 */
 export default function DefinitionsPanel() {
   const { message } = App.useApp()
+  const navigate = useNavigate()
   const [deployOpen, setDeployOpen] = useState(false)
   const [form] = Form.useForm<{ name: string; bpmnXml: string }>()
 
@@ -66,11 +68,16 @@ export default function DefinitionsPanel() {
       title: '操作',
       key: 'op',
       fixed: 'right',
-      width: 90,
+      width: 130,
       render: (_: unknown, r) => (
-        <Button type="link" size="small" onClick={() => toggle(r)}>
-          {r.suspended ? '恢复' : '挂起'}
-        </Button>
+        <Space size={0}>
+          <Button type="link" size="small" onClick={() => navigate(`/designer?key=${encodeURIComponent(r.key)}`)}>
+            设计
+          </Button>
+          <Button type="link" size="small" onClick={() => toggle(r)}>
+            {r.suspended ? '恢复' : '挂起'}
+          </Button>
+        </Space>
       ),
     },
   ]
@@ -84,9 +91,10 @@ export default function DefinitionsPanel() {
   return (
     <>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Button type="primary" onClick={() => setDeployOpen(true)}>
-          部署 BPMN
+        <Button type="primary" icon={<EditOutlined />} onClick={() => navigate('/designer')}>
+          可视化新建
         </Button>
+        <Button onClick={() => setDeployOpen(true)}>部署 BPMN(粘贴 XML)</Button>
         <Button icon={<ReloadOutlined />} onClick={() => query.refetch()} loading={query.isFetching}>
           刷新
         </Button>

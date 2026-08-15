@@ -23,6 +23,20 @@ pnpm dev                       # http://localhost:5373
 
 - 待办中心:`/tasks`
 - 流程轨迹:`/process/hisRxReview`(叠加实例轨迹高亮:`/process/hisRxReview?businessKey=<就诊号>`)
+- 运维面板:`/ops`(ADMIN;实例运维 / 死信作业 / DLQ / 流程定义)
+- 流程设计器:`/designer`(ADMIN;可视化拖拽建模 + 部署,`/designer?key=<定义key>` 编辑既有定义最新版)
+
+### 流程设计器(bpmn-js Modeler)
+
+`/designer` 提供**可视化 BPMN 编辑 + 部署**:bpmn-js Modeler 拖拽建模 + `bpmn-js-properties-panel` 完整属性面板
+(vanilla BPMN provider + 自定义 **Flowable** provider,可编 `flowable:candidateGroups`/`assignee`/`delegateExpression`,
+内联 flowable moddle),导出 XML 预览,部署复用 `POST /api/v1/admin/definitions/deploy`(零后端改动)。
+入口:运维面板「流程定义」Tab 的「可视化新建」/ 行「设计」按钮,或侧栏「流程设计器」。桌面为主;<992 只读降级 + 引导桌面。
+
+> **定位诚实说明**:设计器是「可视化编辑+部署工具」(粘贴 XML 的升级),产物**无法从 console 独立跑实例**——
+> 实例发起由消费方经 Kafka `StartProcessCommandV1` 驱动,任务完成走审方专用端点(`decision=PASS/REJECT`),
+> 网关条件仅 `decision` 变量可用。带 outbox/ACK(serviceTask delegate、message 关联)的流程仍走「克隆 his-rx-review 改 XML」路径。
+> 详见 `../docs/plans/bpmn-designer-0815-2120/{DECISION_RECORD,FINAL_PLAN}.md`。
 
 ## 环境变量(`.env.example`)
 
@@ -79,4 +93,5 @@ docker build -t workflow-console .   # nginx 静态托管,监听 8302,/api 反�
 
 ## 本轮 Non-goals
 
-BPMN 建模器/部署(留 Option B 下一轮)、认领/转办、退费审批、跨服务患者明细、深色模式、移动端建模。
+认领/转办、退费审批、跨服务患者明细、深色模式、移动端建模。
+BPMN 建模器/部署已交付(`/designer`,见上)。设计器本轮不做:完整表单设计器、多实例/会签、`.bpmn` 文件导入导出、Camunda/Zeebe 属性 provider、从 console 发起/驱动实例(归消费方+服务端)。

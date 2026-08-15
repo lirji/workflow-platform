@@ -37,7 +37,7 @@
 |---|---|
 | **任务操作** | SDK 仅 findTasks/completeReview;无认领/转办/加签/会签/撤回 |
 | **高级流程** | 无超时/定时器升级、SLA、边界事件、动态候选人、多级审批、表单 |
-| **流程建模** | 无设计器(下一轮 Option B) |
+| **流程建模** | ✅ 已补:`/designer` 可视化 Modeler + 属性面板 + 部署(4.4) |
 | **数据/合规** | 无归档/留存;变量白名单为约定非强制;无 PII 脱敏 |
 
 ## 3. 业务能力图(现有架构能支撑什么)
@@ -80,7 +80,8 @@
 ### 阶段四 · 流程能力增强(P2)—— 基本完成
 - 4.1 任务操作 ✅(认领/转办/委派/撤回):core + REST `/tasks/{id}/{claim,reassign,delegate,unclaim}` + SDK + 审计。**加签/会签**需 multi-instance BPMN(审方无 MI),留待带 MI 流程模板。
 - 4.2 SLA/超时 ✅:非阻塞边界定时器超时升级能力经 `TimerEscalationSpikeTest` 坐实(Flowable 7.1)。
-- 4.3 流程定义管理 ✅(Option-B 后端 + lite 前端):`/api/v1/admin/definitions`(部署/列表/挂起/恢复 + 审计)+ 运维面板「流程定义」Tab(粘贴 XML 部署)。**可视化拖拽设计器**(完整 bpmn-js Modeler)为剩余大前端特性,需单独走 frontend-plan。
+- 4.3 流程定义管理 ✅(Option-B 后端 + lite 前端):`/api/v1/admin/definitions`(部署/列表/挂起/恢复 + 审计)+ 运维面板「流程定义」Tab(粘贴 XML 部署)。
+- 4.4 可视化流程设计器 ✅(`/designer`,Scope C):bpmn-js Modeler 拖拽建模 + `bpmn-js-properties-panel` 完整属性面板(vanilla + 自定义 Flowable provider:candidateGroups/assignee/delegateExpression + 内联 moddle)+ 部署前校验 + 复用 deploy 端点(零后端改动)。走完 frontend-plan(`docs/plans/bpmn-designer-0815-2120/`)。**诚实边界**:可视化编辑+部署工具,产物无法从 console 独立跑实例(发起归消费方 Kafka `StartProcessCommandV1`、完成走审方端点、condition 仅 `decision` 变量);带 outbox/ACK 的流程仍走克隆 XML 路径。
 
 ## 5. 里程碑与顺序依赖
 
@@ -94,10 +95,10 @@
 
 ---
 
-**当前执行位置**:🎉 路线图**平台侧全部落地**。P0(1.1–1.4)✅、P1(2.1 运维面板 / 2.2 可观测性 / 2.3 HA / 2.4 契约治理)✅、P2(4.1 任务操作 / 4.2 SLA超时 / 4.3 定义管理)✅、阶段三 onboarding 配方 ✅。
+**当前执行位置**:🎉 路线图**平台侧全部落地**。P0(1.1–1.4)✅、P1(2.1 运维面板 / 2.2 可观测性 / 2.3 HA / 2.4 契约治理)✅、P2(4.1 任务操作 / 4.2 SLA超时 / 4.3 定义管理 / 4.4 可视化设计器)✅、阶段三 onboarding 配方 ✅。
 
 **剩余(非本仓库可完结)**:
-- **可视化流程设计器**(完整拖拽 Modeler):大前端特性,需单独 frontend-plan;当前已有 Option-B-lite(粘贴 XML 部署)与只读轨迹图。
+- ~~**可视化流程设计器**(完整拖拽 Modeler)~~ ✅ 已交付(4.4,`/designer`)。
 - **分布式追踪**:留作配置接入——生产接 OTLP 后端时加 `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` + `management.tracing.sampling`,Spring Boot observation 自动传播 HTTP/Kafka trace(不预埋以免无后端时空跑)。
 - **告警**:规则已给(`deploy/prometheus/alerts.yml`),接入需生产 Prometheus/Alertmanager。
 - **live 多流程场景 + 加签/会签**:需消费方 repo 适配 / 带 MI 的新流程模板。
