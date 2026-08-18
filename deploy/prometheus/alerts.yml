@@ -12,6 +12,24 @@ groups:
           summary: "有消息进入 DLQ 死信队列"
           description: "近 5 分钟有 {{ $value }} 条消息进入 workflow.dlq.v1(topic={{ $labels.topic }})。需排查毒消息并考虑重放。"
 
+      - alert: WorkflowOutboxFailed
+        expr: increase(workflow_outbox_failed_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "有 outbox 消息达到最大尝试次数"
+          description: "近 5 分钟有 {{ $value }} 条 outbox 消息进入 FAILED(topic={{ $labels.topic }})，需排查 broker/契约并人工处置。"
+
+      - alert: WorkflowOutboxDeliveryUnknown
+        expr: increase(workflow_outbox_delivery_unknown_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "有 outbox 消息投递结果未知"
+          description: "消息可能已经送达，平台已停止自动重发。必须先按 eventId/actionId 核对消费方幂等账本，再决定处置。"
+
       - alert: WorkflowCorrelationMismatch
         expr: increase(workflow_correlation_outcome_total{outcome="ACTION_MISMATCH"}[10m]) > 0
         for: 2m

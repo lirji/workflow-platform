@@ -7,6 +7,7 @@ package com.lrj.workflow.core.dlq;
  * @param originalTopic     原始 topic(重放投回此 topic)
  * @param msgKey            原始消息 key
  * @param payload           原始消息体(JSON envelope)
+ * @param signature         原始 workflow-signature-v1 header(Base64URL)，可空
  * @param errorMessage      进 DLQ 的异常信息
  * @param status            NEW / REPLAYED
  * @param failedAtEpochMs   入 DLQ 时间
@@ -17,6 +18,7 @@ public record DlqRecord(
         String originalTopic,
         String msgKey,
         String payload,
+        String signature,
         String errorMessage,
         String status,
         Long failedAtEpochMs,

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 流程定义部署服务(Option B 后端)真实部署验证:部署 BPMN XML → 定义可查。
@@ -50,7 +51,9 @@ class DefinitionAdminServiceTest {
 
         assertThat(svc.list("his")).extracting(ProcessDefinitionView::key).contains("demoProc");
 
-        svc.suspendDefinition(view.id());
+        assertThatThrownBy(() -> svc.suspendDefinition("other", view.id()))
+                .isInstanceOf(org.flowable.common.engine.api.FlowableObjectNotFoundException.class);
+        svc.suspendDefinition("his", view.id());
         assertThat(svc.list("his").stream().filter(v -> v.id().equals(view.id())).findFirst().orElseThrow().suspended())
                 .isTrue();
     }

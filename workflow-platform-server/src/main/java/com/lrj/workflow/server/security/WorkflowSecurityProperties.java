@@ -21,7 +21,10 @@ public class WorkflowSecurityProperties {
     /** JWT 中承载组/角色的 claim 名(Casdoor 默认 groups)。 */
     private String groupsClaim = "groups";
 
-    /** JWT 中承载租户的 claim 名;为空则租户仍取 X-Workflow-Tenant 头(不臆造 Casdoor 租户映射)。 */
+    /** 访问令牌必须包含的 audience；生产 profile 强制非空。 */
+    private String audience = "";
+
+    /** JWT 中承载租户的 claim 名；生产 profile 强制非空，dev 未配置时回退明文 Header。 */
     private String tenantClaim = "";
 
     public boolean isEnabled() {
@@ -54,6 +57,14 @@ public class WorkflowSecurityProperties {
 
     public void setGroupsClaim(String groupsClaim) {
         this.groupsClaim = groupsClaim;
+    }
+
+    public String getAudience() {
+        return audience;
+    }
+
+    public void setAudience(String audience) {
+        this.audience = audience;
     }
 
     public String getTenantClaim() {

@@ -30,19 +30,25 @@ public class ProcessController {
     }
 
     @GetMapping
-    public List<ProcessInstanceView> byBusinessKey(@RequestHeader("X-Workflow-Tenant") String tenant,
+    public List<ProcessInstanceView> byBusinessKey(
+                                                   @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
                                                    @RequestParam String definitionKey,
                                                    @RequestParam String businessKey) {
         return query.findByBusinessKey(identity.tenant(tenant), definitionKey, businessKey);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ProcessInstanceView> get(@PathVariable String id) {
-        return query.getInstance(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ProcessInstanceView> get(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        return query.getInstance(identity.tenant(tenant), id)
+                .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/timeline")
-    public List<TimelineEntry> timeline(@PathVariable String id) {
-        return query.timeline(id);
+    public List<TimelineEntry> timeline(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        return query.timeline(identity.tenant(tenant), id);
     }
 }

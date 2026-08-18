@@ -19,13 +19,12 @@ export const userManager = new UserManager({ ...oidcSettings, automaticSilentRen
 
 /**
  * 归一化组名以匹配 BPMN candidateGroups(评审 B4)。
- * BPMN 里是大写、无前缀的 PHARMACIST/ADMIN;Casdoor token 组名可能带路径段(org/PHARMACIST)
- * 或 <org>_ 下划线前缀(his_PHARMACIST)、大小写不定。角色名本身不含下划线,故取末段并大写即可归一。
+ * BPMN 里使用精确的大写角色名。只去路径段，不再按最后一个下划线截断，避免
+ * 任意 `tenant_ADMIN` 被提升为全局 ADMIN。
  */
 export function normalizeGroup(g: string): string {
   const afterSlash = g.slice(g.lastIndexOf('/') + 1)
-  const afterUnderscore = afterSlash.slice(afterSlash.lastIndexOf('_') + 1)
-  return afterUnderscore.toUpperCase()
+  return afterSlash.toUpperCase()
 }
 
 /** 从 access_token 解出归一化(shortName)后的 groups。 */

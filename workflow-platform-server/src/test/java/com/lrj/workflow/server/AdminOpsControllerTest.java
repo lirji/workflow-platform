@@ -4,6 +4,7 @@ import com.lrj.workflow.core.process.ProcessQueryService;
 import com.lrj.workflow.protocol.api.ProcessInstanceView;
 import com.lrj.workflow.server.admin.AdminOpsService;
 import com.lrj.workflow.server.admin.DeadLetterJobView;
+import com.lrj.workflow.server.outbox.OutboxRecoveryService;
 import com.lrj.workflow.server.web.AdminOpsController;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ class AdminOpsControllerTest {
     @Autowired MockMvc mvc;
     @MockBean ProcessQueryService query;
     @MockBean AdminOpsService ops;
+    @MockBean OutboxRecoveryService outboxRecovery;
     @MockBean com.lrj.workflow.server.security.WorkflowIdentityResolver identity;
 
     @BeforeEach
@@ -52,23 +54,24 @@ class AdminOpsControllerTest {
 
     @Test
     void suspendReturns204AndDelegates() throws Exception {
-        mvc.perform(post("/api/v1/admin/instances/pi1/suspend"))
+        mvc.perform(post("/api/v1/admin/instances/pi1/suspend").header("X-Workflow-Tenant", "his"))
                 .andExpect(status().isNoContent());
-        verify(ops).suspend("pi1");
+        verify(ops).suspend("his", "pi1");
     }
 
     @Test
     void terminateReturns204WithReason() throws Exception {
-        mvc.perform(post("/api/v1/admin/instances/pi1/terminate").param("reason", "误发起"))
+        mvc.perform(post("/api/v1/admin/instances/pi1/terminate")
+                        .header("X-Workflow-Tenant", "his").param("reason", "误发起"))
                 .andExpect(status().isNoContent());
-        verify(ops).terminate("pi1", "误发起");
+        verify(ops).terminate("his", "pi1", "误发起");
     }
 
     @Test
     void deadLetterJobsListed() throws Exception {
-        when(ops.deadLetterJobs(100)).thenReturn(List.of(
+        when(ops.deadLetterJobs("his", 100)).thenReturn(List.of(
                 new DeadLetterJobView("j1", "pi1", "serviceTask1", 0, "boom")));
-        mvc.perform(get("/api/v1/admin/jobs/dead-letter"))
+        mvc.perform(get("/api/v1/admin/jobs/dead-letter").header("X-Workflow-Tenant", "his"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].jobId").value("j1"))
                 .andExpect(jsonPath("$[0].exceptionMessage").value("boom"));
@@ -76,8 +79,21 @@ class AdminOpsControllerTest {
 
     @Test
     void retryJobReturns204WithDefaultRetries() throws Exception {
-        mvc.perform(post("/api/v1/admin/jobs/j1/retry"))
+        mvc.perform(post("/api/v1/admin/jobs/j1/retry").header("X-Workflow-Tenant", "his"))
                 .andExpect(status().isNoContent());
-        verify(ops).retryJob(eq("j1"), anyInt());
+        verify(ops).retryJob(eq("his"), eq("j1"), anyInt());
+    }
+
+    @Test
+    void requeueDeliveryUnknownRequiresExplicitReason() throws Exception {
+        mvc.perform(post("/api/v1/admin/outbox/evt-1/requeue-delivery-unknown")
+                        .header("X-Workflow-Tenant", "his")
+                        .param("reason", "已核对目标 inbox 未收到"))
+                .andExpect(status().isNoContent());
+        verify(outboxRecovery).requeueDeliveryUnknown("his", "evt-1", "已核对目标 inbox 未收到");
+
+        mvc.perform(post("/api/v1/admin/outbox/evt-1/requeue-delivery-unknown")
+                        .header("X-Workflow-Tenant", "his"))
+                .andExpect(status().isBadRequest());
     }
 }

@@ -5,6 +5,7 @@ import com.lrj.workflow.protocol.event.Actor;
 import com.lrj.workflow.server.security.SecurityConfig;
 import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import com.lrj.workflow.server.web.TaskController;
+import com.lrj.workflow.server.web.WorkflowExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,10 +33,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 用 spring-security-test 的 jwt() 注入认证,JwtDecoder mock 掉(无网络)。
  */
 @WebMvcTest(TaskController.class)
-@Import({SecurityConfig.class, WorkflowIdentityResolver.class})
+@Import({SecurityConfig.class, WorkflowIdentityResolver.class, WorkflowExceptionHandler.class})
 @TestPropertySource(properties = {
         "workflow.security.enabled=true",
-        "workflow.security.jwk-set-uri=http://localhost/jwks"
+        "workflow.security.jwk-set-uri=http://localhost/jwks",
+        "workflow.security.tenant-claim=tenant_id"
 })
 class WorkflowSecurityChainTest {
 
@@ -55,9 +57,10 @@ class WorkflowSecurityChainTest {
 
     @Test
     void withJwt_is200() throws Exception {
-        when(taskApp.findTasks(any(), any(), any())).thenReturn(List.of());
+        when(taskApp.findTasks(any(), any(), any(), any())).thenReturn(List.of());
         mvc.perform(get("/api/v1/tasks")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("PHARMACIST")))
+                        .with(jwt().jwt(j -> j.claim("tenant_id", "his"))
+                                .authorities(new SimpleGrantedAuthority("PHARMACIST")))
                         .header("X-Workflow-Tenant", "his")
                         .param("definitionKey", "hisRxReview"))
                 .andExpect(status().isOk());
@@ -67,10 +70,14 @@ class WorkflowSecurityChainTest {
     @Test
     void completeReview_actorDerivedFromJwt_overridesBody() throws Exception {
         ArgumentCaptor<Actor> actorCap = ArgumentCaptor.forClass(Actor.class);
-        when(taskApp.completeReview(eq("t1"), eq("his"), eq("PASS"), any(), actorCap.capture())).thenReturn("act-1");
+        when(taskApp.completeReview(eq("t1"), eq("his"), eq("PASS"), any(), actorCap.capture(), any()))
+                .thenReturn("act-1");
 
         mvc.perform(post("/api/v1/tasks/t1/complete-review")
-                        .with(jwt().jwt(j -> j.subject("sub-xyz").claim("preferred_username", "pharma01").claim("name", "药师张三")))
+                        .with(jwt().jwt(j -> j.subject("sub-xyz")
+                                .claim("preferred_username", "pharma01")
+                                .claim("name", "药师张三")
+                                .claim("tenant_id", "his")))
                         .header("X-Workflow-Tenant", "his")
                         .contentType("application/json")
                         .content("{\"decision\":\"PASS\",\"opinion\":\"同意\",\"actorSub\":\"SPOOFED\"}"))
@@ -78,5 +85,20 @@ class WorkflowSecurityChainTest {
 
         assertThat(actorCap.getValue().subjectId()).isEqualTo("sub-xyz");
         assertThat(actorCap.getValue().username()).isEqualTo("pharma01");
+    }
+
+    @Test
+    void tenantHeaderCannotOverrideJwtTenant() throws Exception {
+        mvc.perform(get("/api/v1/tasks")
+                        .with(jwt().jwt(j -> j.claim("tenant_id", "his")))
+                        .header("X-Workflow-Tenant", "other"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void missingRequiredTenantClaimIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/tasks")
+                        .with(jwt()))
+                .andExpect(status().isForbidden());
     }
 }

@@ -47,6 +47,13 @@ public class ProcessLinkRepository {
         return r.stream().findFirst();
     }
 
+    public Optional<ProcessLink> findByTenantAndInstanceId(String tenant, String processInstanceId) {
+        List<ProcessLink> r = jdbc.query(
+                "SELECT * FROM wf_process_link WHERE tenant_id=? AND process_instance_id=?",
+                MAPPER, tenant, processInstanceId);
+        return r.stream().findFirst();
+    }
+
     /** 按 businessKey 找处于某阶段的实例(如 WAITING_BUSINESS 关联 ACK)。 */
     public List<ProcessLink> findByBusinessKeyAndPhase(String tenant, String defKey, String bizKey, ProcessPhase phase) {
         return jdbc.query(
@@ -96,16 +103,25 @@ public class ProcessLinkRepository {
     /** 运维强制置阶段(不做乐观锁,admin 终止/干预用)。返回命中行数。 */
     public int markPhase(String processInstanceId, ProcessPhase phase) {
         return jdbc.update(
-                "UPDATE wf_process_link SET phase=?, version=version+1, updated_at=now() WHERE process_instance_id=?",
-                phase.name(), processInstanceId);
+                "UPDATE wf_process_link SET phase=?, status=?, version=version+1, updated_at=now() "
+                        + "WHERE process_instance_id=?",
+                phase.name(), statusFor(phase), processInstanceId);
     }
 
     /** 乐观锁更新阶段。返回是否命中(版本匹配)。 */
     public boolean updatePhase(String processInstanceId, ProcessPhase phase, long expectedVersion) {
         int n = jdbc.update(
-                "UPDATE wf_process_link SET phase=?, version=version+1, updated_at=now() "
+                "UPDATE wf_process_link SET phase=?, status=?, version=version+1, updated_at=now() "
                         + "WHERE process_instance_id=? AND version=?",
-                phase.name(), processInstanceId, expectedVersion);
+                phase.name(), statusFor(phase), processInstanceId, expectedVersion);
         return n == 1;
+    }
+
+    static String statusFor(ProcessPhase phase) {
+        return switch (phase) {
+            case COMPLETED, CANCELLED -> "ENDED";
+            case INCIDENT -> "ERROR";
+            case WAITING_USER, WAITING_BUSINESS -> "ACTIVE";
+        };
     }
 }

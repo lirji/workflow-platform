@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Guard integration tests from the shared Compose database
+        run: |
+          if grep -R "jdbc:postgresql://localhost:25432/workflow" workflow-platform-*/src/test; then
+            echo "Tests must use an isolated Testcontainers database, never the shared Compose database."
+            exit 1
+          fi
+      - name: Test Maven reactor
+        run: mvn --batch-mode --no-transfer-progress test
+      - name: Require PostgreSQL integration suites to execute
+        run: |
+          core_report=workflow-platform-core/target/surefire-reports/TEST-com.lrj.workflow.core.WorkflowMetadataMigrationTest.xml
+          loop_report=workflow-platform-server/target/surefire-reports/TEST-com.lrj.workflow.server.RxReviewLoopTest.xml
+          for report in "$core_report" "$loop_report"; do
+            test -f "$report"
+            grep -Eq ' tests="[1-9][0-9]*"' "$report"
+            grep -q ' errors="0"' "$report"
+            grep -q ' skipped="0"' "$report"
+            grep -q ' failures="0"' "$report"
+          done
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: workflow-console
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@9.15.9 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Unit and component tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+
+  deployment-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate Compose model
+        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config -q
+      - name: Validate shell syntax
+        run: |
+          for f in deploy/scripts/*.sh; do bash -n "$f"; done
+          if [ -f deploy/run-server-auth.sh ]; then bash -n deploy/run-server-auth.sh; fi

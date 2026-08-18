@@ -63,6 +63,8 @@ eventId(UUID,inbox 去重键) · contractVersion(固定 1) · eventType · occur
 · source(来源系统标识) · tenantId · correlationId · causationId(上游 eventId,可空) · payload
 ```
 
+中台会在写 inbox 前校验 `contractVersion=1`、监听 topic 对应的 `eventType`、信封及 payload 必填字段；不合法消息进入既有 retry/DLQ。生产还会同时校验 `source=tenant` allowlist 和 per-source HMAC，消费方必须提前登记绑定与密钥，并在 Kafka record header `workflow-signature-v1` 中携带“精确原始 JSON UTF-8 字节”的 HMAC-SHA256 Base64URL 值。序列化后不得再改写空白、字段顺序或字符转义。
+
 ### ① 发起 `StartProcessCommandV1`（消费方 → 中台）
 
 ```
@@ -127,6 +129,8 @@ workflow:
     base-url: http://workflow-server:8300
     connect-timeout-ms: 2000
     read-timeout-ms: 5000
+    require-authorization: true          # 生产建议:缺 token 直接失败,不发匿名请求
+    fail-on-disabled-writes: true        # 生产建议:误关 SDK 时写操作不可被 Noop 静默吞掉
 ```
 自动装配（`WorkflowSdkAutoConfiguration`）后注入 `WorkflowClient`：
 
@@ -140,9 +144,18 @@ public interface WorkflowClient {
 ```
 > 发起故意**不在** SDK 里——发起必须与业务写库同事务，走 outbox（见 §5）。
 
+生产环境通过动态 provider 为每次请求提供服务令牌（也可用 `workflow.client.bearer-token` 配静态令牌，但不建议把长期密钥写入配置文件）：
+
+```java
+@Bean
+WorkflowBearerTokenProvider workflowBearerTokenProvider(ServiceTokenService tokens) {
+    return tokens::currentAccessToken;
+}
+```
+
 ### 4.2 直接调 REST（不引 SDK）
 
-所有请求带头 `X-Workflow-Tenant: <租户>`（如 `his`）。
+dev/shadow 请求带 `X-Workflow-Tenant: <租户>`（如 `his`）；生产启用 JWT 后以租户 claim 为准，头可省略，若同时传入则必须一致。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -152,7 +165,7 @@ public interface WorkflowClient {
 | POST | `/api/v1/tasks/{taskId}/claim?userId=` / `reassign?assignee=` / `delegate?userId=` / `unclaim` | 任务操作：认领/转办/委派/撤回 → 204；任务不存在 404 |
 | GET | `/api/v1/process-instances?definitionKey=&businessKey=` | 查实例（含最终一致 `phase`）→ `ProcessInstanceView[]` |
 | GET | `/api/v1/process-instances/{id}/timeline` | 历史轨迹 → `TimelineEntry[]` |
-| GET | `/api/v1/definitions/{key}/xml` | 最新版 BPMN XML（含 DI，供 bpmn-js 渲染） |
+| GET | `/api/v1/definitions/{key}/xml?processInstanceId=` | 无实例参数取最新版；带实例参数时经租户/key 校验后取该实例实际运行版本的 BPMN XML |
 
 `phase`（`ProcessInstanceView.phase`）：`WAITING_USER` / `WAITING_BUSINESS` / `COMPLETED` / `INCIDENT` / `CANCELLED`。
 
@@ -166,23 +179,30 @@ REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUT
 | 生产 | `true` | **额外带 `Authorization: Bearer <Casdoor JWT>`** | **从 JWT 派生并覆盖**头/请求体(防伪造);未认证→401 |
 
 启用后:
-- `/actuator/health|info|prometheus` 放行,其余 `/api/**` 需有效 JWT。
-- JWT 的 `groups` claim 经归一化(取路径末段、去 `<org>_` 前缀、大写)作为权限,与 BPMN candidateGroups(`PHARMACIST`/`ADMIN`)对齐。
+- `/actuator/health|info` 放行；`/actuator/prometheus` 需 `OBSERVABILITY` 或 `ADMIN`；其余 `/api/**` 需有效 JWT。
+- JWT 的 `groups` claim 只取路径末段并大写；角色必须精确为 BPMN candidateGroups（如 `PHARMACIST`/`ADMIN`）。`his_ADMIN` 不会被提升为 `ADMIN`。
 - **运维/死信端点** `/api/v1/admin/**`、`/api/v1/dlq/**` 需 **ADMIN** 权限;其余 `/api/**` 需已认证。
 - `actor` 由 JWT 的 `sub`/`preferred_username`/`name` 派生,**覆盖请求体传入的 `actorSub` 等**(请求体 actor 仅在 `enabled=false` 生效)。
-- `tenant`:仅当配置了 `workflow.security.tenant-claim` 且 JWT 含该 claim 时从 JWT 取,否则仍用 `X-Workflow-Tenant` 头(不臆造 Casdoor 租户映射)。
+- `tenant`:配置 `workflow.security.tenant-claim` 后，该 claim 是唯一可信来源；缺 claim 或请求头与 claim 不一致均返回 403。
+- 普通用户只能看到自己已认领或自己/所属组可候选的任务；只能给自己认领，且认领使用引擎原子操作；转办、委派、撤回只允许当前办理人。`ADMIN` 可执行全量任务运维。
+- `issuer`、标准时效与 `audience` 同时校验。`prod` profile 启动时会校验安全开关、issuer、audience、tenant claim、schema 与试点自动部署配置，不满足即拒绝启动。
+- Kafka 不经过 HTTP JWT：生产必须设置 `WORKFLOW_KAFKA_TRUST_ENABLED=true`、`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=source=tenant,...` 和 `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=source=<Base64URL密钥>,...`。每个绑定 source 的解码密钥至少 32 字节；producer 对最终发送的原始 JSON UTF-8 字节计算 HMAC-SHA256，并把 Base64URL 签名放入 `workflow-signature-v1` header。应用校验用于认证 source 声明和 tenant 授权，broker 仍必须启用 SASL/TLS 与 producer topic ACL。
 
-**服务端配置**(环境变量):
+**服务端安全与 Kafka 信任配置**(环境变量):
 
-| 配置(`workflow.security.*`) | 环境变量 | 说明 |
+| 配置 | 环境变量 | 说明 |
 |---|---|---|
 | `enabled` | `WORKFLOW_SECURITY_ENABLED` | 默认 false;生产 true |
 | `jwk-set-uri` | `WORKFLOW_OIDC_JWKS` | Casdoor JWKS(优先,lazy 不阻塞启动) |
-| `issuer-uri` | `WORKFLOW_OIDC_ISSUER` | 或用 issuer(启动拉 openid-config);与 jwks 二选一 |
+| `issuer-uri` | `WORKFLOW_OIDC_ISSUER` | 可信 issuer；生产必填，配置 JWKS 时仍用于 issuer 校验 |
+| `audience` | `WORKFLOW_OIDC_AUDIENCE` | 预期 audience；生产必填 |
 | `groups-claim` | `WORKFLOW_GROUPS_CLAIM` | 承载组的 claim,默认 `groups` |
-| `tenant-claim` | `WORKFLOW_TENANT_CLAIM` | 承载租户的 claim;空=仍取头 |
+| `tenant-claim` | `WORKFLOW_TENANT_CLAIM` | 承载租户的 claim；生产必填 |
+| `kafka-trust.enabled` | `WORKFLOW_KAFKA_TRUST_ENABLED` | 生产必须 true |
+| `kafka-trust.source-tenant-bindings` | `WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS` | `source=tenant,...` allowlist |
+| `kafka-trust.source-signing-keys` | `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS` | `source=Base64URL密钥,...`；每个绑定 source 至少 32 字节 |
 
-> ⚠️ **SDK 现状**:`RemoteWorkflowClient` 暂未自动附带 `Authorization`(服务间鉴权待补,见 ROADMAP 阶段一)。因此在 `enabled=true` 环境下,消费方经 SDK 调用需自行注入服务令牌,或经带鉴权的网关转发;`enabled=false` 的联调环境不受影响。
+SDK 会在每次请求时调用 `WorkflowBearerTokenProvider` 并附带 `Authorization: Bearer ...`；启用 `require-authorization` 后，取不到令牌会在发请求前失败。
 
 ## 5. 消费方代码骨架（示意）
 
@@ -201,8 +221,11 @@ var cmd = new StartProcessCommandV1(
 var env = new EventEnvelopeV1<>(
         UUID.randomUUID().toString(), 1, "workflow.command.start.v1",
         Instant.now(), "his-outpatient", tenant, correlationId, null, cmd);
+String rawJson = json(env); // 先得到最终、不会再变化的发送字节
+String signature = base64Url(hmacSha256(sourceSecret, rawJson.getBytes(UTF_8)));
 outbox.save(topic("workflow.command.start.v1"),
-            key(tenant, "hisRxReview", encounterId), json(env)); // 你的 outbox 轮询器再投 Kafka
+            key(tenant, "hisRxReview", encounterId), rawJson, signature);
+// 你的 outbox 轮询器发送 rawJson，并把 signature 写入 Kafka header workflow-signature-v1。
 ```
 
 ### 5.2 落地（消费 requested → 做业务 → 回 applied）
@@ -237,9 +260,10 @@ public void onActionRequested(String message) {
 - [ ] 引 `workflow-platform-sdk` 依赖（查询/办理即时反馈用；不需要可只引 `workflow-platform-protocol`）。
 - [ ] **发起**：业务事务内写 outbox → `workflow.command.start.v1`（四元组幂等）。
 - [ ] **落地**：消费 `workflow.action.requested.v1`（自有 group）→ 按 `actionId` 幂等做副作用 → 事务内写 outbox → `workflow.action.applied.v1`。
-- [ ] 实现 inbox（按 `eventId` 去重）+ outbox（至少一次投递 + 重发）。
+- [ ] 实现 inbox（按 `eventId` 去重）+ outbox（明确失败至少一次重发；ACK 结果不明时停止自动重发并人工核账）。
 - [ ] 所有 REST 调用带 `X-Workflow-Tenant`；配 `workflow.client.*`（若用 SDK）。
 - [ ] 生产环境(`workflow.security.enabled=true`):REST 调用额外带 `Authorization: Bearer <Casdoor JWT>`（见 §4.3）。
+- [ ] 生产 Kafka：把消费方逻辑 source 登记到 `WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS`，并配置 broker SASL/TLS/topic producer ACL。
 - [ ] 待办 UI：接 workflow-console，或自建接 REST。
 
 ## 7. 参考实现与约束
@@ -248,7 +272,7 @@ public void onActionRequested(String message) {
 - **契约演进**：`EventEnvelopeV1.contractVersion` 固定 `1`；破坏性变更走新版本 topic（`*.v2`），并行灰度。**契约门禁**：`ContractGoldenTest`（protocol 模块）钉死每个对外 record 的顶层字段集，任何增/删/改名都会让 `mvn test` 失败，强制显式版本化而非静默破坏——CI 即跨仓库契约守门。
 - **现状约束**：
   - SDK/protocol 为 `0.1.0-SNAPSHOT`，**未发布到公共仓库**（构建产物在本地 maven 仓库 `/Users/liruijun/personal/repository`）；外部项目引依赖前需能访问该仓库或内网 Nexus。
-  - Kafka topic/序列化/inbox-outbox 需消费方自行落实（中台侧参考 `workflow-platform-server` 的 `WorkflowStartListener` / `WorkflowActionAppliedListener` 与 `EnvelopeCodec`）。
+  - Kafka topic/序列化/inbox-outbox 需消费方自行落实（中台侧参考 `WorkflowStartListener` / `WorkflowActionAppliedListener` 与 `EnvelopeCodec`）；v1 版本、事件类型、必填字段不再宽松接受。
 
 ## 8. 契约 record 速查
 

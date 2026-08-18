@@ -34,6 +34,22 @@
         <module>workflow-platform-admin</module>
     </modules>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Docker Engine 29 拒绝 docker-java 的旧默认 API；固定到仍广泛兼容的 1.44，
+                         确保 Docker 可用时 Testcontainers 真正执行而不是被误判为不可用。 -->
+                    <systemPropertyVariables>
+                        <api.version>1.44</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
     <dependencyManagement>
         <dependencies>
             <!-- Flowable 版本统一由 BOM 管理 -->

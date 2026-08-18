@@ -67,14 +67,28 @@ public class DefinitionAdminService {
                 .list().stream().map(this::toView).toList();
     }
 
-    public void suspendDefinition(String id) {
+    public void suspendDefinition(String tenant, String id) {
+        requireTenantDefinition(tenant, id);
         repositoryService.suspendProcessDefinitionById(id);
         workflowAudit.adminOp("suspend-definition", id, null);
     }
 
-    public void activateDefinition(String id) {
+    public void activateDefinition(String tenant, String id) {
+        requireTenantDefinition(tenant, id);
         repositoryService.activateProcessDefinitionById(id);
         workflowAudit.adminOp("activate-definition", id, null);
+    }
+
+    private ProcessDefinition requireTenantDefinition(String tenant, String id) {
+        ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionId(id)
+                .processDefinitionTenantId(tenant)
+                .singleResult();
+        if (definition == null) {
+            throw new org.flowable.common.engine.api.FlowableObjectNotFoundException(
+                    "流程定义不存在", ProcessDefinition.class);
+        }
+        return definition;
     }
 
     private ProcessDefinitionView toView(ProcessDefinition d) {

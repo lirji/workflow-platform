@@ -6,10 +6,12 @@ import com.lrj.workflow.protocol.event.EventEnvelopeV1;
 import com.lrj.workflow.protocol.event.WorkflowActionAppliedV1;
 import com.lrj.workflow.protocol.event.WorkflowTopics;
 import com.lrj.workflow.server.metrics.WorkflowMetrics;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 消费 workflow.action.applied:inbox 去重 → 关联回流程 message。回执早到(订阅未就绪)置 WAITING_CORRELATION 重试。
@@ -24,26 +26,32 @@ public class WorkflowActionAppliedListener {
     private final MessageCorrelationService correlation;
     private final WorkflowMetrics metrics;
     private final LifecyclePublisher lifecycle;
+    private final KafkaEnvelopeTrustValidator trust;
 
     public WorkflowActionAppliedListener(EnvelopeCodec codec, InboxEventRepository inbox,
                                          MessageCorrelationService correlation, WorkflowMetrics metrics,
-                                         LifecyclePublisher lifecycle) {
+                                         LifecyclePublisher lifecycle, KafkaEnvelopeTrustValidator trust) {
         this.codec = codec;
         this.inbox = inbox;
         this.correlation = correlation;
         this.metrics = metrics;
         this.lifecycle = lifecycle;
+        this.trust = trust;
     }
 
     @KafkaListener(topics = WorkflowTopics.ACTION_APPLIED, groupId = "workflow-server")
-    public void onApplied(String message) {
-        EventEnvelopeV1<WorkflowActionAppliedV1> env = codec.parse(message, WorkflowActionAppliedV1.class);
+    @Transactional
+    public void onApplied(ConsumerRecord<String, String> record) {
+        String message = record.value();
+        EventEnvelopeV1<WorkflowActionAppliedV1> env = codec.parse(
+                message, WorkflowActionAppliedV1.class, WorkflowTopics.ACTION_APPLIED);
+        trust.validate(env, message, record.headers().lastHeader(KafkaEnvelopeTrustValidator.SIGNATURE_HEADER));
         if (!inbox.tryClaim(env.eventId(), WorkflowTopics.ACTION_APPLIED, env.eventType(), message)) {
             log.debug("重复 applied 事件,跳过 eventId={}", env.eventId());
             return;
         }
         try {
-            var outcome = correlation.correlate(env.payload());
+            var outcome = correlation.correlate(env.tenantId(), env.payload());
             metrics.correlationOutcome(outcome.name());
             if (outcome == MessageCorrelationService.Outcome.CORRELATED && env.payload().status() != null) {
                 var p = env.payload();

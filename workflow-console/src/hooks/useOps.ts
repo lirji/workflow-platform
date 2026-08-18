@@ -106,7 +106,11 @@ export function useDeployDefinition() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ name, bpmnXml }: { name: string; bpmnXml: string }) => deployDefinition(name, bpmnXml),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [DEFS_KEY] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [DEFS_KEY] })
+      // 最新定义发生变化；历史实例以 processInstanceId 为 key，失效后仍会取回同一准确版本。
+      void qc.invalidateQueries({ queryKey: ['definition-xml'] })
+    },
   })
 }
 

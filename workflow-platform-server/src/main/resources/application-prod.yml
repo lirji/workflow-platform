@@ -1,0 +1,15 @@
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+workflow:
+  security:
+    enabled: true
+  pilot:
+    auto-deploy: false
+
+flowable:
+  database-schema-update: false

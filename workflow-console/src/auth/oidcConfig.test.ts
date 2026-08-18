@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { groupsFromToken, normalizeGroup } from './oidcConfig'
 
 describe('normalizeGroup', () => {
-  it('大写化并去掉路径段与 <org>_ 前缀', () => {
+  it('大写化并只去掉路径段，不把带下划线的组提升为全局角色', () => {
     expect(normalizeGroup('PHARMACIST')).toBe('PHARMACIST')
     expect(normalizeGroup('pharmacist')).toBe('PHARMACIST')
     expect(normalizeGroup('org/PHARMACIST')).toBe('PHARMACIST')
-    expect(normalizeGroup('his_PHARMACIST')).toBe('PHARMACIST')
-    expect(normalizeGroup('casdoor/his_admin')).toBe('ADMIN')
+    expect(normalizeGroup('his_PHARMACIST')).toBe('HIS_PHARMACIST')
+    expect(normalizeGroup('casdoor/his_admin')).toBe('HIS_ADMIN')
   })
 })
 

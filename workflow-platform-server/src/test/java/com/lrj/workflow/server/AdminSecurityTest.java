@@ -2,6 +2,7 @@ package com.lrj.workflow.server;
 
 import com.lrj.workflow.core.process.ProcessQueryService;
 import com.lrj.workflow.server.admin.AdminOpsService;
+import com.lrj.workflow.server.outbox.OutboxRecoveryService;
 import com.lrj.workflow.server.security.SecurityConfig;
 import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import com.lrj.workflow.server.web.AdminOpsController;
@@ -31,6 +32,7 @@ class AdminSecurityTest {
     @Autowired MockMvc mvc;
     @MockBean ProcessQueryService query;
     @MockBean AdminOpsService ops;
+    @MockBean OutboxRecoveryService outboxRecovery;
     @MockBean JwtDecoder jwtDecoder;
 
     @Test

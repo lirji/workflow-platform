@@ -4,6 +4,7 @@ import com.lrj.workflow.protocol.api.CompleteReviewRequest;
 import com.lrj.workflow.protocol.api.TaskView;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -14,12 +15,39 @@ import java.util.Map;
 public class RemoteWorkflowClient implements WorkflowClient {
 
     private final RestClient http;
+    private final WorkflowClientProperties props;
+    private final WorkflowBearerTokenProvider tokenProvider;
 
     public RemoteWorkflowClient(WorkflowClientProperties props) {
+        this(props, props::getBearerToken);
+    }
+
+    public RemoteWorkflowClient(WorkflowClientProperties props, WorkflowBearerTokenProvider tokenProvider) {
         SimpleClientHttpRequestFactory f = new SimpleClientHttpRequestFactory();
         f.setConnectTimeout(props.getConnectTimeoutMs());
         f.setReadTimeout(props.getReadTimeoutMs());
-        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).requestFactory(f).build();
+        this.props = props;
+        this.tokenProvider = tokenProvider;
+        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).requestFactory(f)
+                .requestInterceptor((request, body, execution) -> {
+                    String token = currentToken();
+                    if (StringUtils.hasText(token)) {
+                        request.getHeaders().setBearerAuth(token);
+                    }
+                    return execution.execute(request, body);
+                })
+                .build();
+    }
+
+    String currentToken() {
+        String token = tokenProvider == null ? null : tokenProvider.currentToken();
+        if (StringUtils.hasText(token) && token.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            token = token.substring(7);
+        }
+        if (!StringUtils.hasText(token) && props.isRequireAuthorization()) {
+            throw new IllegalStateException("workflow.client.require-authorization=true，但未取得 Bearer Token");
+        }
+        return token;
     }
 
     @Override

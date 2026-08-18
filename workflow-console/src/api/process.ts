@@ -15,9 +15,10 @@ export async function getTimeline(id: string): Promise<TimelineEntry[]> {
   return data
 }
 
-/** 取某 key 最新版本 BPMN XML(含 DI),供 bpmn-js 只读渲染。GET /api/v1/definitions/{key}/xml */
-export async function getDefinitionXml(key: string): Promise<string> {
+/** 无实例 ID 时取最新定义；轨迹页传实例 ID 以读取该实例实际运行版本。 */
+export async function getDefinitionXml(key: string, processInstanceId?: string): Promise<string> {
   const { data } = await apiClient.get(`/api/v1/definitions/${encodeURIComponent(key)}/xml`, {
+    params: processInstanceId ? { processInstanceId } : undefined,
     responseType: 'text',
     headers: { Accept: 'application/xml' },
     transformResponse: (d) => d, // 保持原始 XML 字符串,勿被 JSON 解析

@@ -36,12 +36,14 @@ public class AdminDefinitionController {
     }
 
     @GetMapping
-    public List<ProcessDefinitionView> list(@RequestHeader("X-Workflow-Tenant") String tenant) {
+    public List<ProcessDefinitionView> list(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant) {
         return svc.list(identity.tenant(tenant));
     }
 
     @PostMapping("/deploy")
-    public ProcessDefinitionView deploy(@RequestHeader("X-Workflow-Tenant") String tenant,
+    public ProcessDefinitionView deploy(
+                                        @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
                                         @RequestBody DeployProcessRequest req) {
         Actor actor = identity.actor(new Actor(null, null, null));
         return svc.deploy(identity.tenant(tenant), req.name(), req.bpmnXml(),
@@ -49,14 +51,18 @@ public class AdminDefinitionController {
     }
 
     @PostMapping("/{id}/suspend")
-    public ResponseEntity<Void> suspend(@PathVariable String id) {
-        svc.suspendDefinition(id);
+    public ResponseEntity<Void> suspend(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        svc.suspendDefinition(identity.tenant(tenant), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/activate")
-    public ResponseEntity<Void> activate(@PathVariable String id) {
-        svc.activateDefinition(id);
+    public ResponseEntity<Void> activate(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        svc.activateDefinition(identity.tenant(tenant), id);
         return ResponseEntity.noContent().build();
     }
 }

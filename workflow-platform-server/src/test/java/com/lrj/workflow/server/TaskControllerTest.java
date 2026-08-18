@@ -41,7 +41,8 @@ class TaskControllerTest {
 
     @Test
     void listTasksByBusinessKey() throws Exception {
-        when(taskApp.findTasks("his", "hisRxReview", "enc-1")).thenReturn(List.of(
+        when(taskApp.findTasks(ArgumentMatchers.eq("his"), ArgumentMatchers.eq("hisRxReview"),
+                ArgumentMatchers.eq("enc-1"), ArgumentMatchers.any())).thenReturn(List.of(
                 new TaskView("t1", "pharmacistReview", "药师审方", "pi1", "hisRxReview", "enc-1", "his",
                         null, List.of("PHARMACIST"), 1L)));
         mvc.perform(get("/api/v1/tasks")
@@ -56,7 +57,7 @@ class TaskControllerTest {
     @Test
     void completeReviewReturns202Accepted() throws Exception {
         when(taskApp.completeReview(ArgumentMatchers.eq("t1"), ArgumentMatchers.eq("his"),
-                ArgumentMatchers.eq("PASS"), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.eq("PASS"), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn("act-123");
         mvc.perform(post("/api/v1/tasks/t1/complete-review")
                         .header("X-Workflow-Tenant", "his")
@@ -73,7 +74,8 @@ class TaskControllerTest {
                         .header("X-Workflow-Tenant", "his")
                         .param("userId", "p01"))
                 .andExpect(status().isNoContent());
-        verify(taskApp).claimTask("his", "t1", "p01");
+        verify(taskApp).claimTask(ArgumentMatchers.eq("his"), ArgumentMatchers.eq("t1"),
+                ArgumentMatchers.eq("p01"), ArgumentMatchers.any());
     }
 
     @Test
@@ -82,6 +84,7 @@ class TaskControllerTest {
                         .header("X-Workflow-Tenant", "his")
                         .param("assignee", "p02"))
                 .andExpect(status().isNoContent());
-        verify(taskApp).reassignTask("his", "t1", "p02");
+        verify(taskApp).reassignTask(ArgumentMatchers.eq("his"), ArgumentMatchers.eq("t1"),
+                ArgumentMatchers.eq("p02"), ArgumentMatchers.any());
     }
 }

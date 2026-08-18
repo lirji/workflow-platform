@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, PageSkeleton } from '../components/common/Async
 import { PhaseTag } from '../components/domain/PhaseTag'
 import BpmnViewer, { type BpmnHighlights } from '../components/bpmn/BpmnViewer'
 import { getDefinitionXml } from '../api/process'
-import { useProcessPhase, useTimeline } from '../hooks/useProcess'
+import { newestProcessInstance, useProcessPhase, useTimeline } from '../hooks/useProcess'
 import { errMsg } from '../api/errors'
 import type { TimelineEntry } from '../api/types'
 
@@ -19,15 +19,17 @@ export default function ProcessTracePage() {
   const [sp] = useSearchParams()
   const businessKey = sp.get('businessKey') ?? undefined
 
-  const xmlQuery = useQuery({
-    queryKey: ['definition-xml', key],
-    queryFn: () => getDefinitionXml(key),
-    staleTime: 5 * 60_000,
-  })
-
   const instQuery = useProcessPhase(key, businessKey ?? '', !!businessKey)
   const instances = instQuery.data
-  const latest = instances && instances[instances.length - 1]
+  const latest = newestProcessInstance(instances)
+  const noInstance = !!businessKey && instQuery.isSuccess && !latest
+  const xmlQuery = useQuery({
+    queryKey: ['definition-xml', key, latest?.processInstanceId ?? 'latest'],
+    queryFn: () => getDefinitionXml(key, latest?.processInstanceId),
+    // 带 businessKey 时先确定实例，避免先渲染最新定义再闪换成历史版本。
+    enabled: !businessKey || (!!latest && instQuery.isSuccess),
+    staleTime: 5 * 60_000,
+  })
   const timelineQuery = useTimeline(latest?.processInstanceId)
   const entries = timelineQuery.data ?? []
 
@@ -43,9 +45,15 @@ export default function ProcessTracePage() {
   const fmt = (v: number | null) => (v ? new Date(v).toLocaleString('zh-CN') : '—')
 
   let body: ReactNode
-  if (xmlQuery.isLoading) body = <PageSkeleton rows={10} />
+  if ((businessKey && instQuery.isLoading) || xmlQuery.isLoading || (!!latest && timelineQuery.isLoading))
+    body = <PageSkeleton rows={10} />
+  else if (businessKey && instQuery.isError)
+    body = <ErrorState message={errMsg(instQuery.error, '流程实例拉取失败')} onRetry={() => instQuery.refetch()} />
+  else if (noInstance) body = <EmptyState description={`未找到业务键 ${businessKey} 的流程实例`} />
   else if (xmlQuery.isError)
     body = <ErrorState message={errMsg(xmlQuery.error, '流程定义 XML 拉取失败')} onRetry={() => xmlQuery.refetch()} />
+  else if (timelineQuery.isError)
+    body = <ErrorState message={errMsg(timelineQuery.error, '流程办理轨迹拉取失败')} onRetry={() => timelineQuery.refetch()} />
   else if (!xmlQuery.data) body = <EmptyState description="无流程图" />
   else body = <BpmnViewer xml={xmlQuery.data} highlights={highlights} />
 
@@ -66,7 +74,7 @@ export default function ProcessTracePage() {
         }
       />
       <Card size="small" styles={{ body: { padding: 0 } }}>{body}</Card>
-      {businessKey && entries.length > 0 && (
+      {businessKey && !timelineQuery.isError && entries.length > 0 && (
         <Card size="small" title="办理轨迹" style={{ marginTop: 16 }}>
           <Timeline
             items={entries.map((e: TimelineEntry) => ({

@@ -39,7 +39,7 @@ sequenceDiagram
 | 模块 | 职责 | 关键类 / 资源(相对各模块 `src/main`) |
 |---|---|---|
 | **protocol** | Published Language:对外事件契约 record + REST DTO + 主题常量。无业务逻辑,可独立编译。`ProtocolInfo.CONTRACT_VERSION=1` | `event/EventEnvelopeV1`、`StartProcessCommandV1`、`WorkflowActionRequestedV1`、`WorkflowActionAppliedV1`、`WorkflowActionStatus`、`Actor`、`WorkflowTopics`、`WorkflowLifecycleV1`;`api/TaskView`、`TaskSearchResult`、`CompleteReviewRequest`、`ProcessInstanceView`、`TimelineEntry` |
-| **core** | 领域/应用服务 + 数据访问 + Flyway 迁移 + 试点 BPMN。直接用 Flowable `RuntimeService`/`TaskService`(不抽象引擎,ADR 决策) | `process/ProcessApplicationService`、`process/ProcessQueryService`、`task/TaskApplicationService`、`correlation/MessageCorrelationService`、`outbox/OutboxEventRepository`、`inbox/InboxEventRepository`、`dlq/DlqEventRepository`、`link/ProcessLink(Repository)`+`ProcessPhase`、`delegate/RxReviewActionOutboxDelegate`、`db/migration/V1__…、V2__…`、`bpmn/his-rx-review-v1.bpmn20.xml` |
+| **core** | 领域/应用服务 + 数据访问 + Flyway 迁移 + 试点 BPMN。直接用 Flowable `RuntimeService`/`TaskService`(不抽象引擎,ADR 决策) | `process/ProcessApplicationService`、`process/ProcessQueryService`、`task/TaskApplicationService`、`correlation/MessageCorrelationService`、`outbox/OutboxEventRepository`、`inbox/InboxEventRepository`、`dlq/DlqEventRepository`、`link/ProcessLink(Repository)`+`ProcessPhaseTransitionService`、`delegate/RxReviewActionOutboxDelegate`、`db/migration/V1__…V5__…`、`bpmn/his-rx-review-v1.bpmn20.xml` |
 | **sdk** | 消费方接入门面(Spring Boot Starter)。默认 `workflow.client.enabled=false` → 注入 `NoopWorkflowClient`(引入即安全) | `WorkflowClient`、`RemoteWorkflowClient`、`NoopWorkflowClient`、`WorkflowClientProperties`、`WorkflowSdkAutoConfiguration` |
 | **server(:8300)** | **运行时服务**:Flowable 引擎(async executor 开)+ REST + Kafka 监听 + outbox 投递 + 安全 + 指标/审计 | `web/*Controller`、`kafka/WorkflowStartListener`+`WorkflowActionAppliedListener`+`WorkflowDlqListener`+`EnvelopeCodec`+`KafkaErrorConfig`、`outbox/OutboxPublisher`、`correlation/CorrelationRetryJob`、`dlq/DlqReplayService`、`security/*`、`metrics/WorkflowMetrics`、`audit/WorkflowAudit`、`admin/*Service+*View`、`BpmnAutoDeployer`、`config/FlowableTuningConfig` |
 | **admin(:8301)** | 定义/租户管理服务;`async-executor-activate=false`(不跑运行时作业),与 server 同库。扫 `com.lrj.workflow` 复用 core | `WorkflowPlatformAdminApplication` |
@@ -59,16 +59,20 @@ BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenan
 
 ## 4. 可靠消息与幂等(正确性核心)
 
-### 4.1 事务性 Outbox(至少一次投递)
+### 4.1 事务性 Outbox(明确失败至少一次；未知结果人工核账)
 
 - 业务/流程副作用与 `wf_outbox_event` 写在**同一 PG 事务**;`OutboxPublisher`(server,`@Scheduled(fixedDelay=workflow.outbox.poll-ms)`)后台领取投递。
-- 领取用 `claimBatch(...)`(`FOR UPDATE SKIP LOCKED` + `lease_owner`/`lease_until` 租约),多副本各领不相交批次;发送成功 `markSent`,失败 `reschedule` 退避重投(至少一次)。
-- `wf_outbox_event.status`:`READY → PROCESSING → SENT`(失败 `FAILED`/退避重排)。
+- 领取用 `claimBatch(...)`(`FOR UPDATE SKIP LOCKED` + `lease_owner`/`lease_until` 租约),每批生成一次性 fencing token；`markSent/reschedule/markFailed` 均以 `event_id + PROCESSING + lease_owner` CAS，陈旧发送结果不能覆盖接管者。
+- Kafka ACK 等待有界且 `producer max.block + ACK timeout` 严格短于 lease；明确失败指数退避，累计达到 `max-attempts` 后进入 `FAILED`。
+- `wf_outbox_event.status`:`READY → PROCESSING → SENT`；明确失败可回 `READY`，超限为 `FAILED`。应用/Kafka timeout、取消或线程中断无法证明 broker 未接收，进入 `DELIVERY_UNKNOWN`、告警且禁止自动重发。
+- ADMIN 必须先核对目标 Kafka/消费者 inbox；确认未送达后，带原因调用 `POST /api/v1/admin/outbox/{eventId}/requeue-delivery-unknown`，以同一 eventId 放回 `READY`。不确定时不得盲目重排；消费方始终必须按 `eventId/actionId` 幂等。
 
 ### 4.2 Inbox 去重(至少一次收敛为幂等)
 
 - 入站事件按 `EventEnvelopeV1.eventId` 落 `wf_inbox_event` 主键去重(`WorkflowStartListener`/`WorkflowActionAppliedListener`)。
 - `wf_inbox_event.status`:`RECEIVED / PROCESSING / DONE / WAITING_CORRELATION / FAILED`;`payload` 保留原始 JSON,供 `WAITING_CORRELATION` 重放。
+- listener 的 inbox 领取、业务处理与状态更新位于同一事务；流程启动使用独立事务提交，若 listener 随后回滚，Kafka 重投会由发起幂等键收敛到原实例。
+- `WAITING_CORRELATION` 重试先用 `FOR UPDATE SKIP LOCKED` + `lease_owner`/`lease_until` 领取，多副本不会同时重放同一回执，异常或租约过期后可恢复。
 
 ### 4.3 三层幂等
 
@@ -104,6 +108,7 @@ BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenan
 | `INCIDENT` | 进入人工处置(未落地/异常) |
 
 `ProcessInstanceView.phase` 对外暴露同一枚举,前端据此诚实呈现"处理中 → 已落地 / 异常"。
+阶段写入由 `ProcessPhaseTransitionService` 有限重读 CAS；连续冲突会抛错回滚，不再静默丢失。`status` 与 phase 同步：等待态=`ACTIVE`、`INCIDENT=ERROR`、`COMPLETED/CANCELLED=ENDED`，V4 会修正已有漂移行。
 
 ## 6. 数据模型(`wf_*`,Flyway 管理)
 
@@ -112,9 +117,9 @@ BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenan
 | 表 | 用途 | 关键约束 |
 |---|---|---|
 | `wf_process_link` | 幂等发起 ↔ Flowable 实例 + businessKey 绑定 + phase | `uk_wf_link_idem`(四元组唯一)、`uk_wf_link_waiting_user`(同 businessKey 单 WAITING_USER 偏唯一) |
-| `wf_inbox_event` | 入站去重 + 关联重试重放 | 主键 `event_id` |
-| `wf_outbox_event` | 事务性发件箱 + 租约领取 | `status`/`available_at` 索引;`lease_owner`/`lease_until` |
-| `wf_dlq_event` | 死信落库(排查/重放) | `status` = `NEW`/`REPLAYED`;记 `original_topic` 供重放投回 |
+| `wf_inbox_event` | 入站去重 + 关联重试租约 | 主键 `event_id`;`lease_owner`/`lease_until` |
+| `wf_outbox_event` | 事务性发件箱 + 租约领取 | `status`/`available_at` 索引；fencing `lease_owner`/`lease_until`；`last_error`；`DELIVERY_UNKNOWN` 仅人工核账后恢复 |
+| `wf_dlq_event` | 死信落库(排查/重放) | `status` = `NEW`/`REPLAYED`;记 `original_topic` 与原 `workflow-signature-v1`，重放时原样带回，不替外部 source 重新签名 |
 | `wf_task_authz_sync` | 任务授权同步态(PENDING fail-closed) | 主键 `task_id` |
 | `wf_deployment_audit` | 流程定义部署/挂起/恢复审计 | `action` = `DEPLOY`/`SUSPEND`/`ACTIVATE` |
 | `wf_tenant_config` | 租户配置(启用定义、authz 三态、候选组映射、留存) | 主键 `tenant_id` |
@@ -124,19 +129,21 @@ BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenan
 由 `workflow.security.enabled` 二选一装配安全过滤链(`server/security/SecurityConfig`),恰有一个 `SecurityFilterChain` 生效:
 
 - **`false`(默认)**:全放行,保 dev/shadow 联调(明文 `X-Workflow-Tenant` 头路径),`actor` 取请求体。
-- **`true`**:OAuth2 Resource Server 校验 Casdoor JWT。`/actuator/health|info|prometheus` 放行;`/api/v1/admin/**` 与 `/api/v1/dlq/**` 需 **`ADMIN`** 权限;其余 `/api/**` 需已认证。`actor`/`tenant` 由 JWT 派生并覆盖请求体/头(防伪造)。
+- **`true`**:OAuth2 Resource Server 校验 JWT 时效、issuer 与 audience。`/actuator/health|info` 放行；`/actuator/prometheus` 需 `OBSERVABILITY` 或 `ADMIN`；`/api/v1/admin/**` 与 `/api/v1/dlq/**` 需 **`ADMIN`**；其余 `/api/**` 需已认证。`actor`/`tenant` 由 JWT 派生，配置 tenant claim 后请求头不能覆盖它。
 
-JWT `groups` claim 经 `normalizeGroup()`(取路径末段、去 `<org>_` 前缀、大写)归一化为权限,与前端 `normalizeGroup` 及 BPMN `candidateGroups`(`PHARMACIST`/`ADMIN`)对齐。JWT 解码优先 `jwk-set-uri`(lazy 不阻塞启动),否则 `issuer-uri`。配置见 [接入指南 §4.3](integration-guide.md) 与 `application.yml` 的 `workflow.security.*`。
+JWT `groups` claim 经 `normalizeGroup()` 只取路径末段并大写，角色名必须精确匹配 BPMN `candidateGroups`；不会按下划线截断，避免 `tenant_ADMIN` 权限提升。任务授权在服务端二次执行，不能依赖前端过滤。`prod` profile 另有启动 fail-fast guard。配置见 [接入指南 §4.3](integration-guide.md) 与 `application.yml` 的 `workflow.security.*`。
+
+Kafka 是独立入口：`EnvelopeCodec` 在 inbox 前校验 v1 版本、topic 对应 `eventType` 及必填字段；`KafkaEnvelopeTrustValidator` 在写 inbox 前同时校验精确原始 JSON 的 per-source HMAC 和显式 `source=tenant` allowlist，因而 envelope 不能靠篡改自报 `source` 绕过边界。`prod` profile 强制开启并为每个 source 配置至少 32 字节密钥。HMAC 是应用层身份与完整性防线，生产 broker 仍必须启用 SASL/TLS 与 topic producer ACL，以限制连接、topic 写入和密钥暴露面。
 
 > Casdoor JWT(含 groups)约 9KB,故 server 设 `max-http-request-header-size: 64KB`,避免合法 token 触发 400。
 
 ## 8. 可观测性
 
 - **Prometheus 指标**(`server/metrics/WorkflowMetrics`,micrometer → `/actuator/prometheus`;点分名转下划线 + `_total`):
-  `workflow_process_started_total`、`workflow_review_completed_total`、`workflow_action_applied_total`、`workflow_correlation_outcome_total`、`workflow_dlq_landed_total`、`workflow_dlq_replayed_total`、`workflow_deadletter_retried_total`、`workflow_admin_op_total`。埋点在 server 层 listener/controller/service,不侵入 core。
+  `workflow_process_started_total`、`workflow_review_completed_total`、`workflow_action_applied_total`、`workflow_correlation_outcome_total`、`workflow_outbox_failed_total`、`workflow_outbox_delivery_unknown_total`、`workflow_dlq_landed_total`、`workflow_dlq_replayed_total`、`workflow_deadletter_retried_total`、`workflow_admin_op_total`。埋点在 server 层 listener/controller/service,不侵入 core。`DELIVERY_UNKNOWN` 表示客户端等待超时后 broker 结果不确定，禁止自动重发以避免把潜在成功误判为失败。
 - **结构化审计**(`server/audit/WorkflowAudit`):独立 logger `WORKFLOW_AUDIT`(key=value),记审方完成、任务操作(claim/reassign/delegate/unclaim)、运维干预、DLQ 重放。
 - **生命周期事件**:server best-effort 投 `workflow.lifecycle.v1`(`WorkflowLifecycleV1`,STARTED/COMPLETED/INCIDENT),供看板/观察者订阅——**不参与正确性**。
-- **告警规则**:`deploy/prometheus/alerts.yml`(DLQ 落地、关联不匹配、终态失败、驳回率、server down)。
+- **告警规则**:`deploy/prometheus/alerts.yml`(outbox 超限失败、DLQ 落地、关联不匹配、终态失败、驳回率、server down)。
 
 ## 9. 运维 / 管理 REST API 参考
 
@@ -152,8 +159,11 @@ JWT `groups` claim 经 `normalizeGroup()`(取路径末段、去 `<org>_` 前缀�
 | POST | `/instances/{id}/terminate?reason=` | 终止实例(reason 建议必填)→ 204 |
 | GET | `/jobs/dead-letter?limit=100` | Flowable 死信作业列表 → `DeadLetterJobView[]` |
 | POST | `/jobs/{jobId}/retry?retries=3` | 重置死信作业重试次数 → 204 |
+| POST | `/outbox/{eventId}/requeue-delivery-unknown?reason=` | 核账确认未送达后恢复未知 outbox → 204；非未知状态 → 409 |
 
 ### 9.2 死信(Kafka DLQ)· `/api/v1/dlq`(`DlqController`)
+
+重放在数据库事务内锁定 `NEW` 记录，携带落库时保存的原 HMAC header，且只允许投回两个平台入站 topic；等待 Kafka broker ACK 后才标记 `REPLAYED`，发送失败会回滚。缺失或无效的原签名不会被平台“修复”，重放后仍由入口 fail closed。DLQ listener 使用独立 stopping error handler：数据库落库失败时停止该消费容器并保留位点，不会形成 DLQ-of-DLQ 自循环；数据库恢复后需重启 server 恢复消费。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

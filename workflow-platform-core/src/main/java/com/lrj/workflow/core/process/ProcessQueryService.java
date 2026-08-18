@@ -37,11 +37,30 @@ public class ProcessQueryService {
         return linkRepo.search(tenant, defKey, phase, limit).stream().map(this::toView).toList();
     }
 
-    public Optional<ProcessInstanceView> getInstance(String processInstanceId) {
-        return linkRepo.findByInstanceId(processInstanceId).map(this::toView);
+    public Optional<ProcessInstanceView> getInstance(String tenant, String processInstanceId) {
+        return linkRepo.findByTenantAndInstanceId(tenant, processInstanceId).map(this::toView);
     }
 
-    public List<TimelineEntry> timeline(String processInstanceId) {
+    /**
+     * 按租户、实例和预期 definition key 定位该实例实际运行的 definition id。
+     * 运行实例优先查 runtime；已结束实例回退 history，供轨迹页加载准确版本的 BPMN XML。
+     */
+    public Optional<String> processDefinitionId(String tenant, String processInstanceId, String expectedDefinitionKey) {
+        ProcessLink link = linkRepo.findByTenantAndInstanceId(tenant, processInstanceId).orElse(null);
+        if (link == null || !java.util.Objects.equals(link.processDefinitionKey(), expectedDefinitionKey)) {
+            return Optional.empty();
+        }
+        var running = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(processInstanceId).singleResult();
+        if (running != null) {
+            return Optional.ofNullable(running.getProcessDefinitionId());
+        }
+        var historic = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(processInstanceId).singleResult();
+        return historic == null ? Optional.empty() : Optional.ofNullable(historic.getProcessDefinitionId());
+    }
+
+    private List<TimelineEntry> timelineForInstance(String processInstanceId) {
         return historyService.createHistoricActivityInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .orderByHistoricActivityInstanceStartTime().asc()
@@ -51,6 +70,14 @@ public class ProcessQueryService {
                         a.getStartTime() == null ? null : a.getStartTime().getTime(),
                         a.getEndTime() == null ? null : a.getEndTime().getTime()))
                 .toList();
+    }
+
+    public List<TimelineEntry> timeline(String tenant, String processInstanceId) {
+        if (linkRepo.findByTenantAndInstanceId(tenant, processInstanceId).isEmpty()) {
+            throw new org.flowable.common.engine.api.FlowableObjectNotFoundException(
+                    "流程实例不存在", org.flowable.engine.runtime.ProcessInstance.class);
+        }
+        return timelineForInstance(processInstanceId);
     }
 
     private ProcessInstanceView toView(ProcessLink l) {

@@ -29,7 +29,7 @@ class DlqControllerTest {
     @Test
     void listReturnsRecords() throws Exception {
         when(dlq.list("NEW", 100)).thenReturn(List.of(
-                new DlqRecord(1L, "workflow.command.start.v1", "k1", "{}", "boom", "NEW", 1L, null)));
+                new DlqRecord(1L, "workflow.command.start.v1", "k1", "{}", "sig", "boom", "NEW", 1L, null)));
         mvc.perform(get("/api/v1/dlq"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(1))

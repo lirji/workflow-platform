@@ -1,4 +1,4 @@
-# 流程/审批中台本地基建:独立 PostgreSQL(Flowable ACT_* + 平台 wf_* 表)+ Redis(缓存预留)。
+# 流程/审批中台本地全栈:PostgreSQL(Flowable ACT_* + 平台 wf_* 表)+ Redis + Kafka + 后端 + 前端。
 # 纪律(risk/auth 都踩过 docker-proxy 残留占端口):独立 project name + 端口全变量化 +
 # 起前先 `docker compose -p workflow-platform down --remove-orphans`。见 deploy/scripts/compose-preflight.sh。
 name: workflow-platform
@@ -75,15 +75,28 @@ services:
       kafka:
         condition: service_healthy
     environment:
+      SPRING_PROFILES_ACTIVE: ${WORKFLOW_SPRING_PROFILES_ACTIVE:-dev}
       WORKFLOW_DB_URL: jdbc:postgresql://postgres:5432/${WORKFLOW_PG_DB:-workflow}
       WORKFLOW_DB_USER: ${WORKFLOW_PG_USER:-workflow}
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_PG_PASSWORD:-workflow}
       WORKFLOW_KAFKA: kafka:9092
+      WORKFLOW_KAFKA_DELIVERY_TIMEOUT_MS: ${WORKFLOW_KAFKA_DELIVERY_TIMEOUT_MS:-8000}
+      WORKFLOW_KAFKA_REQUEST_TIMEOUT_MS: ${WORKFLOW_KAFKA_REQUEST_TIMEOUT_MS:-5000}
+      WORKFLOW_KAFKA_MAX_BLOCK_MS: ${WORKFLOW_KAFKA_MAX_BLOCK_MS:-5000}
+      WORKFLOW_OUTBOX_SEND_TIMEOUT_SECONDS: ${WORKFLOW_OUTBOX_SEND_TIMEOUT_SECONDS:-10}
+      WORKFLOW_OUTBOX_MAX_ATTEMPTS: ${WORKFLOW_OUTBOX_MAX_ATTEMPTS:-10}
+      WORKFLOW_OUTBOX_RETRY_BACKOFF_SECONDS: ${WORKFLOW_OUTBOX_RETRY_BACKOFF_SECONDS:-5}
       # 生产置 false(靠固化官方 DDL 初始化 ACT_*);dev 默认 true 由引擎自建。
       WORKFLOW_FLOWABLE_SCHEMA_UPDATE: ${WORKFLOW_FLOWABLE_SCHEMA_UPDATE:-true}
       WORKFLOW_SECURITY_ENABLED: ${WORKFLOW_SECURITY_ENABLED:-false}
+      WORKFLOW_OIDC_ISSUER: ${WORKFLOW_OIDC_ISSUER:-}
       WORKFLOW_OIDC_JWKS: ${WORKFLOW_OIDC_JWKS:-}
+      WORKFLOW_OIDC_AUDIENCE: ${WORKFLOW_OIDC_AUDIENCE:-}
+      WORKFLOW_GROUPS_CLAIM: ${WORKFLOW_GROUPS_CLAIM:-groups}
       WORKFLOW_TENANT_CLAIM: ${WORKFLOW_TENANT_CLAIM:-}
+      WORKFLOW_KAFKA_TRUST_ENABLED: ${WORKFLOW_KAFKA_TRUST_ENABLED:-false}
+      WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS: ${WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS:-}
+      WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS: ${WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS:-}
     ports:
       - "${WORKFLOW_SERVER_PORT:-8300}:8300"
     healthcheck:
@@ -112,6 +125,31 @@ services:
       - "${WORKFLOW_ADMIN_PORT:-8301}:8301"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8301/actuator/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # 前端控制台 :8302(nginx 静态站，同源 /api 反代到 server:8300)。
+  console:
+    build:
+      context: ../workflow-console
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WORKFLOW_TENANT: ${VITE_WORKFLOW_TENANT:-his}
+        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-false}
+        VITE_CASDOOR_AUTHORITY: ${VITE_CASDOOR_AUTHORITY:-http://localhost:8000}
+        VITE_CASDOOR_CLIENT_ID: ${VITE_CASDOOR_CLIENT_ID:-}
+        VITE_OIDC_SCOPE: ${VITE_OIDC_SCOPE:-openid profile}
+    image: workflow-console:local
+    container_name: workflow-console
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${WORKFLOW_CONSOLE_PORT:-8302}:8302"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8302/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20

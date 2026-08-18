@@ -1,5 +1,8 @@
 package com.lrj.workflow.server;
 
+import com.lrj.workflow.core.WorkflowAccessDeniedException;
+import com.lrj.workflow.core.task.TaskAccessContext;
+import com.lrj.workflow.core.task.TaskApplicationService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -20,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,6 +38,7 @@ class FlowableSpikeTest {
     @Autowired RuntimeService runtimeService;
     @Autowired TaskService taskService;
     @Autowired HistoryService historyService;
+    @Autowired TaskApplicationService taskApplicationService;
 
     private static final String TENANT = "his";
 
@@ -50,6 +55,31 @@ class FlowableSpikeTest {
                 .addClasspathResource("bpmn/spike-hello.bpmn20.xml")
                 .tenantId(TENANT)
                 .deploy();
+    }
+
+    @Test
+    void taskOperationsEnforceCandidateAndCurrentAssignee() {
+        deployHello();
+        ProcessInstance pi = runtimeService.startProcessInstanceByKeyAndTenantId(
+                "spikeHello", "authz-1", TENANT);
+        Task task = taskService.createTaskQuery().processInstanceId(pi.getId()).singleResult();
+
+        TaskAccessContext outsider = TaskAccessContext.enforced("mallory", Set.of("OTHER"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> taskApplicationService.claimTask(TENANT, task.getId(), "mallory", outsider))
+                .isInstanceOf(WorkflowAccessDeniedException.class);
+
+        TaskAccessContext alice = TaskAccessContext.enforced("alice", Set.of("REVIEWERS"));
+        taskApplicationService.claimTask(TENANT, task.getId(), "alice", alice);
+        assertThat(taskService.createTaskQuery().taskId(task.getId()).singleResult().getAssignee()).isEqualTo("alice");
+
+        TaskAccessContext bob = TaskAccessContext.enforced("bob", Set.of("REVIEWERS"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> taskApplicationService.reassignTask(TENANT, task.getId(), "bob", bob))
+                .isInstanceOf(WorkflowAccessDeniedException.class);
+
+        taskApplicationService.reassignTask(TENANT, task.getId(), "bob", alice);
+        assertThat(taskService.createTaskQuery().taskId(task.getId()).singleResult().getAssignee()).isEqualTo("bob");
     }
 
     /** 门禁 1:引擎启动 + tenant 部署 + 发起(带 businessKey)+ UserTask 办理 + 历史落地。 */

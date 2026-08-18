@@ -5,7 +5,7 @@
 
 - **技术栈**:Java 21 · Spring Boot 3.3.5 · Flowable 7.1.0(BOM 统一)· PostgreSQL · Kafka · Redis · React 18 + Vite(前端)
 - **坐标**:`com.lrj.workflow:workflow-platform:0.1.0-SNAPSHOT`(多模块 Maven reactor)
-- **状态**:平台侧路线图已全部落地(P0 基线 / P1 运维闭环 / P2 能力增强);详见 [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- **状态**:功能基线与第一批生产加固已落地；正式投产前仍需在目标环境完成多副本压测、故障演练、备份恢复与外部监控接入。详见 [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 ---
 
@@ -69,8 +69,10 @@
 | 可视化流程设计器(bpmn-js 拖拽 + 部署) | ✅ | 前端 `/designer`(复用 deploy 端点) |
 | SLA / 超时升级(非阻塞边界定时器) | ✅ | 能力经 `TimerEscalationSpikeTest` 坐实(需带定时器的 BPMN) |
 | 可观测性:Prometheus 指标 / 结构化审计 / 生命周期事件 | ✅ | `/actuator/prometheus`、`WORKFLOW_AUDIT` logger、`workflow.lifecycle.v1` |
-| 鉴权:Casdoor JWT(开关渐进,ADMIN 门控) | ✅ | `workflow.security.enabled`;详见 [接入指南 §4.3](docs/integration-guide.md) |
-| HA / 水平扩展(outbox SKIP LOCKED + 租约、inbox 去重) | ✅ 代码就绪(集群压测需负载环境) | 见 [`deploy/README.md`](deploy/README.md) |
+| 鉴权与租户隔离:JWT issuer/audience/tenant 校验、精确角色、任务服务端授权、prod fail-fast | ✅ 第一批加固 | `workflow.security.*`;详见 [接入指南 §4.3](docs/integration-guide.md) |
+| Kafka 入站契约/source→tenant 边界 | ✅ 第二批加固 | v1 信封/payload 校验 + 每 source HMAC + tenant allowlist；生产仍需 broker SASL/TLS/ACL |
+| HA / 水平扩展(outbox SKIP LOCKED + fencing CAS + 有界重试、inbox 去重) | ✅ 代码就绪(集群压测需负载环境) | 见 [`deploy/README.md`](deploy/README.md) |
+| 轨迹版本正确性 | ✅ | 默认选最新实例；老实例按实际 `processDefinitionId` 渲染 BPMN |
 | 契约门禁(跨仓库兼容性) | ✅ | `ContractGoldenTest`(protocol);改对外字段即 `mvn test` 失败 |
 | DB 迁移版本化 + 干净库一键建表 | ✅ | Flyway(`wf_*`)+ 固化 Flowable DDL(`ACT_*`);见 [ADR 0001](docs/adr/0001-flowable-version-and-schema.md) |
 
@@ -99,11 +101,11 @@ cd workflow-console && pnpm install && cp .env.example .env.local && pnpm dev
 
 ```bash
 cd deploy && cp .env.example .env
-docker compose -p workflow-platform up -d --build      # PostgreSQL + Redis + Kafka + server + admin
+docker compose -p workflow-platform up -d --build      # PostgreSQL + Redis + Kafka + server + admin + console
 curl -s localhost:8300/actuator/health                  # {"status":"UP"}
 ```
 
-端口/开关/迁移/HA/监控细节见 **[`deploy/README.md`](deploy/README.md)**。前端 `workflow-console` 独立构建镜像(见其 README)。
+端口/开关/迁移/HA/监控细节见 **[`deploy/README.md`](deploy/README.md)**。前端入口为 `http://localhost:8302/login`。
 
 ## 6. 测试与门禁
 
@@ -113,6 +115,8 @@ cd workflow-console && pnpm test     # 前端:Vitest 组件/hook;pnpm e2e 为 Pl
 ```
 
 - **契约门禁** `ContractGoldenTest`(protocol):钉死每个对外 record 的顶层字段集;任何增/删/改名都会失败,强制显式版本化——CI 即跨仓库契约守门。
+- **数据库安全门禁**:审方回环测试只使用 Testcontainers 随机 PostgreSQL，清理前还会验证专用 test 数据库/用户；不会探测或清理本地 Compose 库。Docker 不可用时相关真 PG 测试明确跳过。
+- **持续集成** `.github/workflows/ci.yml`:后端全 reactor 测试、前端单测与生产构建、Compose 模型及部署脚本语法校验。
 
 ## 7. 文档索引
 

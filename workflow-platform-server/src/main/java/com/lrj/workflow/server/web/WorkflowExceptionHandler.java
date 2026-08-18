@@ -1,6 +1,7 @@
 package com.lrj.workflow.server.web;
 
 import com.lrj.workflow.core.WorkflowConflictException;
+import com.lrj.workflow.core.WorkflowAccessDeniedException;
 import org.flowable.common.engine.api.FlowableObjectNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,12 @@ public class WorkflowExceptionHandler {
     @ExceptionHandler(WorkflowConflictException.class)
     public ResponseEntity<Map<String, String>> conflict(WorkflowConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CONFLICT", "message", e.getMessage()));
+    }
+
+    @ExceptionHandler(WorkflowAccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> forbidden(WorkflowAccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "FORBIDDEN", "message", e.getMessage()));
     }
 
     @ExceptionHandler(FlowableObjectNotFoundException.class)

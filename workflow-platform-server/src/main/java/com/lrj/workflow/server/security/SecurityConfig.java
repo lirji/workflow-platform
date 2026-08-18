@@ -12,7 +12,13 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.util.StringUtils;
@@ -28,7 +34,7 @@ import java.util.Locale;
  *   <li>enabled=true → OAuth2 Resource Server 校验 Casdoor JWT;/actuator 探针放行,其余需认证。</li>
  *   <li>enabled=false(默认/缺省) → 全放行,保 dev/shadow 联调(明文 X-Workflow-Tenant 头路径)。</li>
  * </ul>
- * JWT 的 groups claim 归一化(去路径段/<org>_ 前缀、大写)后作为权限,与前端 normalizeGroup / BPMN candidateGroups 对齐。
+ * JWT 的 groups claim 只取路径末段并大写后作为权限,与前端 normalizeGroup / BPMN candidateGroups 对齐。
  */
 @Configuration
 @EnableConfigurationProperties(WorkflowSecurityProperties.class)
@@ -47,7 +53,8 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/prometheus").hasAnyAuthority("OBSERVABILITY", "ADMIN")
                         .requestMatchers("/api/v1/admin/**", "/api/v1/dlq/**").hasAuthority("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.decoder(jwtDecoder).jwtAuthenticationConverter(jwtAuthConverter())));
@@ -67,13 +74,43 @@ public class SecurityConfig {
     @Bean
     @ConditionalOnProperty(prefix = "workflow.security", name = "enabled", havingValue = "true")
     JwtDecoder jwtDecoder() {
+        NimbusJwtDecoder decoder;
         if (StringUtils.hasText(props.getJwkSetUri())) {
-            return NimbusJwtDecoder.withJwkSetUri(props.getJwkSetUri()).build();
+            decoder = NimbusJwtDecoder.withJwkSetUri(props.getJwkSetUri()).build();
+        } else if (StringUtils.hasText(props.getIssuerUri())) {
+            JwtDecoder discovered = JwtDecoders.fromIssuerLocation(props.getIssuerUri());
+            if (!(discovered instanceof NimbusJwtDecoder nimbus)) {
+                OAuth2TokenValidator<Jwt> validator = jwtValidator();
+                return token -> {
+                    Jwt jwt = discovered.decode(token);
+                    OAuth2TokenValidatorResult result = validator.validate(jwt);
+                    if (result.hasErrors()) {
+                        throw new JwtValidationException("JWT validation failed", result.getErrors());
+                    }
+                    return jwt;
+                };
+            }
+            decoder = nimbus;
+        } else {
+            throw new IllegalStateException("workflow.security.enabled=true 需配置 workflow.security.jwk-set-uri 或 issuer-uri");
         }
-        if (StringUtils.hasText(props.getIssuerUri())) {
-            return JwtDecoders.fromIssuerLocation(props.getIssuerUri());
+        decoder.setJwtValidator(jwtValidator());
+        return decoder;
+    }
+
+    /** 同时校验标准时效、issuer（配置时）和 audience（配置时）。 */
+    OAuth2TokenValidator<Jwt> jwtValidator() {
+        OAuth2TokenValidator<Jwt> defaults = StringUtils.hasText(props.getIssuerUri())
+                ? JwtValidators.createDefaultWithIssuer(props.getIssuerUri())
+                : JwtValidators.createDefault();
+        if (!StringUtils.hasText(props.getAudience())) {
+            return defaults;
         }
-        throw new IllegalStateException("workflow.security.enabled=true 需配置 workflow.security.jwk-set-uri 或 issuer-uri");
+        OAuth2TokenValidator<Jwt> audience = jwt -> jwt.getAudience().contains(props.getAudience())
+                ? OAuth2TokenValidatorResult.success()
+                : OAuth2TokenValidatorResult.failure(new OAuth2Error(
+                "invalid_token", "JWT audience 不匹配", null));
+        return new DelegatingOAuth2TokenValidator<>(defaults, audience);
     }
 
     private JwtAuthenticationConverter jwtAuthConverter() {
@@ -96,10 +133,12 @@ public class SecurityConfig {
                 .toList();
     }
 
-    /** 归一化组名:取路径末段、去 <org>_ 前缀、大写。与前端 normalizeGroup / BPMN candidateGroups 一致。 */
+    /**
+     * 归一化组名：只取路径末段并大写。不得按最后一个下划线截断，否则任意
+     * {@code tenant_ADMIN} 都会被提升为全局 {@code ADMIN}。
+     */
     static String normalizeGroup(String g) {
         String afterSlash = g.substring(g.lastIndexOf('/') + 1);
-        String afterUnderscore = afterSlash.substring(afterSlash.lastIndexOf('_') + 1);
-        return afterUnderscore.toUpperCase(Locale.ROOT);
+        return afterSlash.toUpperCase(Locale.ROOT);
     }
 }

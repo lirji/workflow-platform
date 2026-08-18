@@ -3,6 +3,7 @@ package com.lrj.workflow.core.correlation;
 import com.lrj.workflow.core.link.ProcessLink;
 import com.lrj.workflow.core.link.ProcessLinkRepository;
 import com.lrj.workflow.core.link.ProcessPhase;
+import com.lrj.workflow.core.link.ProcessPhaseTransitionService;
 import com.lrj.workflow.protocol.event.WorkflowActionAppliedV1;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
@@ -27,17 +28,27 @@ public class MessageCorrelationService {
     private final RuntimeService runtimeService;
     private final TaskService taskService;
     private final ProcessLinkRepository linkRepo;
+    private final ProcessPhaseTransitionService phaseTransitions;
 
     public MessageCorrelationService(RuntimeService runtimeService, TaskService taskService,
-                                     ProcessLinkRepository linkRepo) {
+                                     ProcessLinkRepository linkRepo, ProcessPhaseTransitionService phaseTransitions) {
         this.runtimeService = runtimeService;
         this.taskService = taskService;
         this.linkRepo = linkRepo;
+        this.phaseTransitions = phaseTransitions;
     }
 
     @Transactional
-    public Outcome correlate(WorkflowActionAppliedV1 applied) {
+    public Outcome correlate(String tenant, WorkflowActionAppliedV1 applied) {
         String pid = applied.processInstanceId();
+        ProcessLink link = linkRepo.findByTenantAndInstanceId(tenant, pid).orElse(null);
+        if (link == null
+                || !java.util.Objects.equals(link.processDefinitionKey(), applied.processDefinitionKey())
+                || !java.util.Objects.equals(link.businessKey(), applied.businessKey())) {
+            log.warn("关联:租户或业务元数据不匹配 tenant={} pid={} definition={} businessKey={}",
+                    tenant, pid, applied.processDefinitionKey(), applied.businessKey());
+            return Outcome.ACTION_MISMATCH;
+        }
         boolean running = runtimeService.createProcessInstanceQuery().processInstanceId(pid).count() > 0;
         if (!running) {
             log.info("关联:实例已不在运行(可能已处理) pid={}", pid);
@@ -56,16 +67,12 @@ public class MessageCorrelationService {
         }
         runtimeService.setVariable(pid, "appliedStatus", applied.status().name());
         runtimeService.messageEventReceived(MSG, exec.getId());
-        transition(pid);
+        transition(link.processInstanceId());
         log.info("关联成功并推进 pid={} status={}", pid, applied.status());
         return Outcome.CORRELATED;
     }
 
     private void transition(String instanceId) {
-        ProcessLink link = linkRepo.findByInstanceId(instanceId).orElse(null);
-        if (link == null) {
-            return;
-        }
         ProcessPhase next;
         boolean ended = runtimeService.createProcessInstanceQuery().processInstanceId(instanceId).count() == 0;
         if (ended) {
@@ -74,8 +81,6 @@ public class MessageCorrelationService {
             boolean hasTask = taskService.createTaskQuery().processInstanceId(instanceId).count() > 0;
             next = hasTask ? ProcessPhase.INCIDENT : ProcessPhase.WAITING_BUSINESS;
         }
-        if (next != link.phase()) {
-            linkRepo.updatePhase(instanceId, next, link.version());
-        }
+        phaseTransitions.transition(instanceId, next);
     }
 }

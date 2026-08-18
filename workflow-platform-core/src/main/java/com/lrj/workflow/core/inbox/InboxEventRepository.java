@@ -42,27 +42,38 @@ public class InboxEventRepository {
     }
 
     public void markDone(String eventId) {
-        jdbc.update("UPDATE wf_inbox_event SET status='DONE', updated_at=now() WHERE event_id=?", eventId);
+        jdbc.update("UPDATE wf_inbox_event SET status='DONE', lease_owner=NULL, lease_until=NULL, updated_at=now() "
+                + "WHERE event_id=?", eventId);
     }
 
     /** 回执早到:message 订阅尚未就绪,置 WAITING_CORRELATION 指数退避重试(不丢弃)。 */
     public void markWaitingCorrelation(String eventId, int backoffSeconds, String error) {
         jdbc.update(
                 "UPDATE wf_inbox_event SET status='WAITING_CORRELATION', attempt=attempt+1, "
-                        + "next_retry_at=now() + (? * interval '1 second'), error=?, updated_at=now() WHERE event_id=?",
+                        + "next_retry_at=now() + (? * interval '1 second'), error=?, "
+                        + "lease_owner=NULL, lease_until=NULL, updated_at=now() WHERE event_id=?",
                 backoffSeconds, error, eventId);
     }
 
     public void markFailed(String eventId, String error) {
-        jdbc.update("UPDATE wf_inbox_event SET status='FAILED', error=?, updated_at=now() WHERE event_id=?",
+        jdbc.update("UPDATE wf_inbox_event SET status='FAILED', error=?, lease_owner=NULL, lease_until=NULL, "
+                        + "updated_at=now() WHERE event_id=?",
                 error, eventId);
     }
 
-    /** 供 correlation 重试作业:领取到期的 WAITING_CORRELATION 事件 id。 */
-    public java.util.List<String> dueWaitingCorrelation(int limit) {
+    /**
+     * 多副本安全地领取到期关联任务。租约到期可由其它副本接管，SKIP LOCKED 避免同批重复处理。
+     */
+    public java.util.List<String> claimDueWaitingCorrelation(int limit, String leaseOwner, int leaseSeconds) {
         return jdbc.queryForList(
-                "SELECT event_id FROM wf_inbox_event WHERE status='WAITING_CORRELATION' "
-                        + "AND (next_retry_at IS NULL OR next_retry_at <= now()) ORDER BY next_retry_at LIMIT ?",
-                String.class, limit);
+                "UPDATE wf_inbox_event SET lease_owner=?, "
+                        + "lease_until=now() + (? * interval '1 second'), updated_at=now() "
+                        + "WHERE event_id IN ("
+                        + " SELECT event_id FROM wf_inbox_event WHERE status='WAITING_CORRELATION' "
+                        + " AND (next_retry_at IS NULL OR next_retry_at <= now()) "
+                        + " AND (lease_until IS NULL OR lease_until < now()) "
+                        + " ORDER BY next_retry_at LIMIT ? FOR UPDATE SKIP LOCKED) "
+                        + "RETURNING event_id",
+                String.class, leaseOwner, leaseSeconds, limit);
     }
 }

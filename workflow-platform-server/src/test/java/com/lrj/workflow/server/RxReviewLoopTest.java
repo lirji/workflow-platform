@@ -5,6 +5,7 @@ import com.lrj.workflow.core.link.ProcessLink;
 import com.lrj.workflow.core.link.ProcessLinkRepository;
 import com.lrj.workflow.core.link.ProcessPhase;
 import com.lrj.workflow.core.process.ProcessApplicationService;
+import com.lrj.workflow.core.task.TaskAccessContext;
 import com.lrj.workflow.core.task.TaskApplicationService;
 import com.lrj.workflow.protocol.event.Actor;
 import com.lrj.workflow.protocol.event.StartProcessCommandV1;
@@ -17,28 +18,25 @@ import org.flowable.task.api.Task;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 2a 内部闭环集成测试(打真 compose PG,不经 Kafka/REST):
+ * Phase 2a 内部闭环集成测试(独占 Testcontainers PG,不经 Kafka/REST):
  * 幂等发起 → 审方 PASS(delegate 写 outbox)→ 模拟 ACK 关联 → 流程结束、link COMPLETED。
- * Kafka 监听器与定时作业关闭,直接调 application services。PG 不可达则整类跳过(见 [[local-dev-env]])。
+ * Kafka 监听器与定时作业关闭,直接调 application services。Docker 不可用时由 Testcontainers 明确跳过。
  */
-@EnabledIf("pgReachable")
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:25432/workflow",
-        "spring.datasource.username=workflow",
-        "spring.datasource.password=workflow",
-        "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.flyway.enabled=true",
         "spring.flyway.baseline-on-migrate=true",
         "spring.flyway.baseline-version=0",
@@ -46,7 +44,25 @@ import static org.assertj.core.api.Assertions.assertThat;
         "workflow.jobs.enabled=false",
         "workflow.pilot.auto-deploy=false"
 })
+@Testcontainers(disabledWithoutDocker = true)
 class RxReviewLoopTest {
+
+    private static final String TEST_DATABASE = "workflow_rx_review_test";
+    private static final String TEST_USER = "workflow_rx_review_test";
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
+            .withDatabaseName(TEST_DATABASE)
+            .withUsername(TEST_USER)
+            .withPassword("workflow-rx-review-test-only");
+
+    @DynamicPropertySource
+    static void postgresProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+    }
 
     @Autowired RepositoryService repositoryService;
     @Autowired RuntimeService runtimeService;
@@ -57,15 +73,6 @@ class RxReviewLoopTest {
     @Autowired ProcessLinkRepository linkRepo;
     @Autowired JdbcTemplate jdbc;
 
-    static boolean pgReachable() {
-        try (Socket s = new Socket()) {
-            s.connect(new InetSocketAddress("localhost", 25432), 500);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     @BeforeEach
     void deploy() {
         cleanup();
@@ -75,11 +82,23 @@ class RxReviewLoopTest {
 
     @AfterEach
     void cleanup() {
+        requireIsolatedTestDatabase();
         repositoryService.createDeploymentQuery().list()
                 .forEach(d -> repositoryService.deleteDeployment(d.getId(), true));
         jdbc.update("DELETE FROM wf_outbox_event");
         jdbc.update("DELETE FROM wf_inbox_event");
         jdbc.update("DELETE FROM wf_process_link");
+    }
+
+    /**
+     * 广域清理前的不可绕过门禁：即使未来有人误改 DynamicProperty，也不能触碰默认/共享数据库。
+     */
+    private void requireIsolatedTestDatabase() {
+        String database = jdbc.queryForObject("SELECT current_database()", String.class);
+        String user = jdbc.queryForObject("SELECT current_user", String.class);
+        if (!TEST_DATABASE.equals(database) || !TEST_USER.equals(user) || !POSTGRES.isRunning()) {
+            throw new IllegalStateException("拒绝清理非独占测试数据库: database=" + database + ", user=" + user);
+        }
     }
 
     private StartProcessCommandV1 cmd(String enc, String cycle) {
@@ -102,7 +121,7 @@ class RxReviewLoopTest {
         assertThat(task.getTaskDefinitionKey()).isEqualTo("pharmacistReview");
 
         String actionId = taskApp.completeReview(task.getId(), "his", "PASS", "同意发药",
-                new Actor("sub-1", "pharma01", "药师张三"));
+                new Actor("sub-1", "pharma01", "药师张三"), TaskAccessContext.disabled());
 
         // 审方完成 → 泊在 message catch → WAITING_BUSINESS;outbox 有一条 action.requested
         assertThat(linkRepo.findByInstanceId(pid).orElseThrow().phase()).isEqualTo(ProcessPhase.WAITING_BUSINESS);
@@ -117,10 +136,13 @@ class RxReviewLoopTest {
         // 模拟业务落地 ACK 关联回流程
         var applied = new WorkflowActionAppliedV1(pid, task.getId(), "hisRxReview", "enc-9001", actionId,
                 WorkflowActionStatus.APPLIED, 1L, null, null);
-        assertThat(correlation.correlate(applied)).isEqualTo(MessageCorrelationService.Outcome.CORRELATED);
+        assertThat(correlation.correlate("other", applied)).isEqualTo(MessageCorrelationService.Outcome.ACTION_MISMATCH);
+        assertThat(correlation.correlate("his", applied)).isEqualTo(MessageCorrelationService.Outcome.CORRELATED);
 
         assertThat(runtimeService.createProcessInstanceQuery().processInstanceId(pid).count()).isZero();
-        assertThat(linkRepo.findByInstanceId(pid).orElseThrow().phase()).isEqualTo(ProcessPhase.COMPLETED);
+        ProcessLink completed = linkRepo.findByInstanceId(pid).orElseThrow();
+        assertThat(completed.phase()).isEqualTo(ProcessPhase.COMPLETED);
+        assertThat(completed.status()).isEqualTo("ENDED");
     }
 
     @Test
@@ -128,11 +150,12 @@ class RxReviewLoopTest {
         ProcessLink link = processApp.start("his", cmd("enc-9002", "cycle-1"));
         String pid = link.processInstanceId();
         Task task = taskService.createTaskQuery().processInstanceId(pid).singleResult();
-        taskApp.completeReview(task.getId(), "his", "PASS", null, new Actor("sub-1", "pharma01", null));
+        taskApp.completeReview(task.getId(), "his", "PASS", null,
+                new Actor("sub-1", "pharma01", null), TaskAccessContext.disabled());
 
         var wrong = new WorkflowActionAppliedV1(pid, task.getId(), "hisRxReview", "enc-9002", "not-the-action",
                 WorkflowActionStatus.APPLIED, 1L, null, null);
-        assertThat(correlation.correlate(wrong)).isEqualTo(MessageCorrelationService.Outcome.ACTION_MISMATCH);
+        assertThat(correlation.correlate("his", wrong)).isEqualTo(MessageCorrelationService.Outcome.ACTION_MISMATCH);
         // 流程仍泊着,未被错误 ACK 推进
         assertThat(runtimeService.createProcessInstanceQuery().processInstanceId(pid).count()).isEqualTo(1);
     }

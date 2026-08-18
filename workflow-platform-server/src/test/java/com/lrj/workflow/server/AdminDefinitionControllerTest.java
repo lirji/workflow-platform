@@ -61,8 +61,9 @@ class AdminDefinitionControllerTest {
 
     @Test
     void suspendReturns204() throws Exception {
-        mvc.perform(post("/api/v1/admin/definitions/demo:1:10/suspend"))
+        mvc.perform(post("/api/v1/admin/definitions/demo:1:10/suspend")
+                        .header("X-Workflow-Tenant", "his"))
                 .andExpect(status().isNoContent());
-        verify(svc).suspendDefinition("demo:1:10");
+        verify(svc).suspendDefinition("his", "demo:1:10");
     }
 }

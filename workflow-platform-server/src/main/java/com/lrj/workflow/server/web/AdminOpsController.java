@@ -4,6 +4,7 @@ import com.lrj.workflow.core.process.ProcessQueryService;
 import com.lrj.workflow.protocol.api.ProcessInstanceView;
 import com.lrj.workflow.server.admin.AdminOpsService;
 import com.lrj.workflow.server.admin.DeadLetterJobView;
+import com.lrj.workflow.server.outbox.OutboxRecoveryService;
 import com.lrj.workflow.server.security.WorkflowIdentityResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,16 +28,20 @@ public class AdminOpsController {
 
     private final ProcessQueryService query;
     private final AdminOpsService ops;
+    private final OutboxRecoveryService outboxRecovery;
     private final WorkflowIdentityResolver identity;
 
-    public AdminOpsController(ProcessQueryService query, AdminOpsService ops, WorkflowIdentityResolver identity) {
+    public AdminOpsController(ProcessQueryService query, AdminOpsService ops,
+                              OutboxRecoveryService outboxRecovery, WorkflowIdentityResolver identity) {
         this.query = query;
         this.ops = ops;
+        this.outboxRecovery = outboxRecovery;
         this.identity = identity;
     }
 
     @GetMapping("/instances")
-    public List<ProcessInstanceView> instances(@RequestHeader("X-Workflow-Tenant") String tenant,
+    public List<ProcessInstanceView> instances(
+                                               @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
                                                @RequestParam(required = false) String definitionKey,
                                                @RequestParam(required = false) String phase,
                                                @RequestParam(defaultValue = "100") int limit) {
@@ -44,39 +49,59 @@ public class AdminOpsController {
     }
 
     @GetMapping("/incidents")
-    public List<ProcessInstanceView> incidents(@RequestHeader("X-Workflow-Tenant") String tenant,
+    public List<ProcessInstanceView> incidents(
+                                               @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
                                                @RequestParam(defaultValue = "100") int limit) {
         return query.search(identity.tenant(tenant), null, "INCIDENT", limit);
     }
 
     @PostMapping("/instances/{id}/suspend")
-    public ResponseEntity<Void> suspend(@PathVariable String id) {
-        ops.suspend(id);
+    public ResponseEntity<Void> suspend(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        ops.suspend(identity.tenant(tenant), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/instances/{id}/activate")
-    public ResponseEntity<Void> activate(@PathVariable String id) {
-        ops.activate(id);
+    public ResponseEntity<Void> activate(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String id) {
+        ops.activate(identity.tenant(tenant), id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/instances/{id}/terminate")
-    public ResponseEntity<Void> terminate(@PathVariable String id,
+    public ResponseEntity<Void> terminate(
+                                          @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+                                          @PathVariable String id,
                                           @RequestParam(required = false) String reason) {
-        ops.terminate(id, reason);
+        ops.terminate(identity.tenant(tenant), id, reason);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/jobs/dead-letter")
-    public List<DeadLetterJobView> deadLetterJobs(@RequestParam(defaultValue = "100") int limit) {
-        return ops.deadLetterJobs(limit);
+    public List<DeadLetterJobView> deadLetterJobs(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @RequestParam(defaultValue = "100") int limit) {
+        return ops.deadLetterJobs(identity.tenant(tenant), limit);
     }
 
     @PostMapping("/jobs/{jobId}/retry")
-    public ResponseEntity<Void> retryJob(@PathVariable String jobId,
+    public ResponseEntity<Void> retryJob(
+                                         @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+                                         @PathVariable String jobId,
                                          @RequestParam(defaultValue = "3") int retries) {
-        ops.retryJob(jobId, retries);
+        ops.retryJob(identity.tenant(tenant), jobId, retries);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/outbox/{eventId}/requeue-delivery-unknown")
+    public ResponseEntity<Void> requeueDeliveryUnknown(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String eventId,
+            @RequestParam String reason) {
+        outboxRecovery.requeueDeliveryUnknown(identity.tenant(tenant), eventId, reason);
         return ResponseEntity.noContent().build();
     }
 }

@@ -7,8 +7,9 @@ describe('组名门控(归一化后匹配 BPMN candidateGroups)', () => {
     expect(isAdmin(['PHARMACIST'])).toBe(false)
   })
 
-  it('ADMIN 可读且是管理员(含前缀/大小写变体)', () => {
-    expect(canRead(['his_admin'])).toBe(true)
+  it('精确 ADMIN 可读且是管理员，租户下划线前缀不会提权', () => {
+    expect(canRead(['his_admin'])).toBe(false)
+    expect(isAdmin(['his_admin'])).toBe(false)
     expect(isAdmin(['org/ADMIN'])).toBe(true)
   })
 

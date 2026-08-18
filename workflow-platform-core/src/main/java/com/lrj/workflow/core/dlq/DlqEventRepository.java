@@ -22,10 +22,11 @@ public class DlqEventRepository {
     }
 
     /** 落库一条死信,返回自增 id。 */
-    public long save(String originalTopic, String msgKey, String payload, String errorMessage) {
+    public long save(String originalTopic, String msgKey, String payload, String signature, String errorMessage) {
         Long id = jdbc.queryForObject(
-                "INSERT INTO wf_dlq_event(original_topic,msg_key,payload,error_message) VALUES (?,?,?,?) RETURNING id",
-                Long.class, originalTopic, msgKey, payload, errorMessage);
+                "INSERT INTO wf_dlq_event(original_topic,msg_key,payload,signature,error_message) "
+                        + "VALUES (?,?,?,?,?) RETURNING id",
+                Long.class, originalTopic, msgKey, payload, signature, errorMessage);
         return id == null ? -1L : id;
     }
 
@@ -37,6 +38,12 @@ public class DlqEventRepository {
 
     public Optional<DlqRecord> find(long id) {
         return jdbc.query("SELECT * FROM wf_dlq_event WHERE id=?", DlqEventRepository::map, id).stream().findFirst();
+    }
+
+    /** 锁定一条仍为 NEW 的记录；调用方必须在同一事务内完成 Kafka ACK 与状态更新。 */
+    public Optional<DlqRecord> findNewForUpdate(long id) {
+        return jdbc.query("SELECT * FROM wf_dlq_event WHERE id=? AND status='NEW' FOR UPDATE",
+                DlqEventRepository::map, id).stream().findFirst();
     }
 
     /** 标记已重放。 */
@@ -52,6 +59,7 @@ public class DlqEventRepository {
                 rs.getString("original_topic"),
                 rs.getString("msg_key"),
                 rs.getString("payload"),
+                rs.getString("signature"),
                 rs.getString("error_message"),
                 rs.getString("status"),
                 failed == null ? null : failed.getTime(),

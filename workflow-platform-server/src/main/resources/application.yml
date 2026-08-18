@@ -21,6 +21,11 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        # producer 必须早于应用等待预算给出最终失败；异常情况下应用超时会落 DELIVERY_UNKNOWN，绝不伪装 FAILED。
+        delivery.timeout.ms: ${WORKFLOW_KAFKA_DELIVERY_TIMEOUT_MS:8000}
+        request.timeout.ms: ${WORKFLOW_KAFKA_REQUEST_TIMEOUT_MS:5000}
+        max.block.ms: ${WORKFLOW_KAFKA_MAX_BLOCK_MS:5000}
     consumer:
       group-id: workflow-server
       auto-offset-reset: earliest
@@ -32,6 +37,10 @@ workflow:
     batch-size: 100
     poll-ms: 1000
     lease-seconds: 30
+    # producer max.block + 单次 broker ACK 等待必须严格小于 lease；明确失败达上限进入 FAILED。
+    send-timeout-seconds: ${WORKFLOW_OUTBOX_SEND_TIMEOUT_SECONDS:10}
+    max-attempts: ${WORKFLOW_OUTBOX_MAX_ATTEMPTS:10}
+    retry-backoff-seconds: ${WORKFLOW_OUTBOX_RETRY_BACKOFF_SECONDS:5}
   dlq:
     # 监听重试总尝试次数(含初次);超限后由 recoverer 投 workflow.dlq.v1。
     max-attempts: 3
@@ -49,8 +58,15 @@ workflow:
     issuer-uri: ${WORKFLOW_OIDC_ISSUER:}
     jwk-set-uri: ${WORKFLOW_OIDC_JWKS:}
     groups-claim: ${WORKFLOW_GROUPS_CLAIM:groups}
-    # 为空则租户仍取 X-Workflow-Tenant 头(不臆造 Casdoor 租户映射,待明确后再启用)。
+    # 生产必填：只接受签发给 workflow-platform 的 access token。
+    audience: ${WORKFLOW_OIDC_AUDIENCE:}
+    # prod profile 强制非空；dev/shadow 未配置时才回退 X-Workflow-Tenant 头。
     tenant-claim: ${WORKFLOW_TENANT_CLAIM:}
+  kafka-trust:
+    # source→tenant allowlist + 原始 JSON HMAC；prod profile 强制开启并配置。broker 仍需 SASL/TLS/ACL。
+    enabled: ${WORKFLOW_KAFKA_TRUST_ENABLED:false}
+    source-tenant-bindings: ${WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS:}
+    source-signing-keys: ${WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS:}
 
 flowable:
   # dev 默认 true(引擎自建/升级 ACT_*);生产置 false —— 用固化官方 DDL 初始化 ACT_*(见 ADR 0001 / deploy/postgres/flowable-7.1.0)。

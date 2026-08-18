@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 死信运维 REST(排查 + 重放)。鉴权启用时同 /api/** 需认证(P1 再收敛到管理员角色 + admin 面板)。
+ * 死信运维 REST(排查 + 重放)。鉴权启用时需精确 ADMIN 权限。
  */
 @RestController
 @RequestMapping("/api/v1/dlq")

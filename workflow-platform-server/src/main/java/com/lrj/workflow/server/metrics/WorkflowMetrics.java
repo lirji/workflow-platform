@@ -38,6 +38,14 @@ public class WorkflowMetrics {
         reg.counter("workflow.dlq.landed", "topic", nz(topic)).increment();
     }
 
+    public void outboxFailed(String topic) {
+        reg.counter("workflow.outbox.failed", "topic", nz(topic)).increment();
+    }
+
+    public void outboxDeliveryUnknown(String topic) {
+        reg.counter("workflow.outbox.delivery.unknown", "topic", nz(topic)).increment();
+    }
+
     public void dlqReplayed() {
         reg.counter("workflow.dlq.replayed").increment();
     }

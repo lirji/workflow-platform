@@ -10,7 +10,7 @@
 - 可靠消息:事务 outbox(`OutboxPublisher` @Scheduled 轮询 + 批量 claim/租约)+ inbox 幂等(`eventId`)+ 消息关联(`MessageCorrelationService` + `CorrelationRetryJob`)
 - 流程生命周期:`ProcessLink` + `ProcessPhase`(WAITING_USER/WAITING_BUSINESS/COMPLETED/INCIDENT/CANCELLED)
 - REST + SDK:待办查询/办理/实例/轨迹/定义 XML;`BpmnAutoDeployer` 启动自动部署
-- 多租户管道:tenant 贯穿(46 处),来源为明文头
+- 多租户管道:tenant 贯穿；dev 来源为明文头，生产由 JWT tenant claim 决定并校验资源归属
 - 一个流程:审方 `hisRxReview`;前端 workflow-console(待办中心 + 轨迹)
 - 测试:协议 golden / Flowable spike / BPMN 模型 / 审方回环集成 / Controller Web
 
@@ -55,10 +55,10 @@
 ### 阶段一 · 生产化基线(P0)—— ✅ 全部完成
 | 序 | 工作项 | 关键设计 | 验收 |
 |---|---|---|---|
-| 1.1 ✅ | **服务端 Casdoor JWT 鉴权**(已完成) | OAuth2 Resource Server 校验 Casdoor JWT;开关 `workflow.security.enabled`(默认 false 保 shadow 联调);启用时 tenant/actor **从 JWT 派生**覆盖明文头/请求体;groups claim 归一化为权限 | ✅ 关=12 测试全绿;开=无 token 401、带 JWT 200、actor 由 JWT 派生覆盖伪造请求体 |
+| 1.1 ✅ | **服务端 JWT 鉴权**(已完成并加固) | OAuth2 Resource Server 校验 issuer/audience/时效；prod fail-fast；tenant claim fail-closed；精确角色与服务端任务授权 | ✅ 无 token 401、租户缺失/冲突 403、角色防提升、actor 防伪造、任务候选/assignee 回归 |
 | 1.2 ✅ | **DLQ 消费 + 重放**(已完成) | DefaultErrorHandler 重试超限 → recoverer 投 `workflow.dlq.v1`;DlqListener 落库 `wf_dlq_event`;DlqReplayService + `/api/v1/dlq`(列/重放/批量重放),重放投回原 topic 由原监听幂等消费 | ✅ 单元/切片测试全绿;V2 迁移在真库应用通过。DLQ 路由本身走 compose 冒烟(与既有 Kafka 测试策略一致) |
 | 1.3 ✅ | **后端 Dockerfile + compose 补全**(已完成) | `deploy/Dockerfile` 多阶段(build 全 reactor → server/admin 双 target);compose 补 Kafka(KRaft 单节点)+ server(8300)+ admin(8301),healthcheck/depends_on 编排;端口全变量化 | ✅ `docker compose config` 通过 + `docker build server/admin` 全 reactor 在容器内构建成功。`up` 起栈步骤见 `deploy/README.md`(未在本机跑以免抢占运行中的 shadow :8300) |
-| 1.4 ✅ | **DB 迁移版本化**(已完成) | `wf_*` 由 Flyway(V1/V2);Flowable ACT_* 由 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE` 开关(dev=true 引擎自建 / 生产=false 用固化官方 DDL);compose 把 DDL 挂 initdb 实现干净库一键建表 | ✅ 迁移冒烟 7/0(应用全部 V*.sql、7 张 wf_ 表含 dlq、唯一约束);compose config 通过 |
+| 1.4 ✅ | **DB 迁移版本化**(已完成) | `wf_*` 由 Flyway(V1–V5，含 inbox retry lease、outbox last_error/状态回填、DLQ 签名与外部字段扩容)；Flowable ACT_* 由 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE` 开关(dev=true 引擎自建 / 生产=false 用固化官方 DDL)；compose 把 DDL 挂 initdb 实现干净库一键建表 | ✅ PostgreSQL 迁移测试覆盖 7 张表、V3→V5 升级、唯一约束、状态映射及 outbox/inbox 领取 SQL；compose config 门禁 |
 
 ### 阶段二 · 运维闭环(P1)—— 进行中
 - 2.1 admin 运维面板 ✅(后端 + 前端)
@@ -95,19 +95,20 @@
 
 ---
 
-**当前执行位置**:🎉 路线图**平台侧全部落地**。P0(1.1–1.4)✅、P1(2.1 运维面板 / 2.2 可观测性 / 2.3 HA / 2.4 契约治理)✅、P2(4.1 任务操作 / 4.2 SLA超时 / 4.3 定义管理 / 4.4 可视化设计器)✅、阶段三 onboarding 配方 ✅。
+**当前执行位置**:功能路线图与第二批 P0 正确性加固已落地：除第一批安全能力外，集成测试改为独占 Testcontainers；outbox 加 lease fencing CAS/有界发送/FAILED 与 DELIVERY_UNKNOWN；Kafka 加 v1 契约、per-source HMAC 和 source→tenant 边界；phase/status 同步；轨迹按最新实例及实例实际 BPMN 版本展示。
 
 **剩余(非本仓库可完结)**:
 - ~~**可视化流程设计器**(完整拖拽 Modeler)~~ ✅ 已交付(4.4,`/designer`)。
 - **分布式追踪**:留作配置接入——生产接 OTLP 后端时加 `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` + `management.tracing.sampling`,Spring Boot observation 自动传播 HTTP/Kafka trace(不预埋以免无后端时空跑)。
 - **告警**:规则已给(`deploy/prometheus/alerts.yml`),接入需生产 Prometheus/Alertmanager。
 - **live 多流程场景 + 加签/会签**:需消费方 repo 适配 / 带 MI 的新流程模板。
+- **投产环境验证**:多副本容量压测、Kafka/PG 故障与恢复演练、备份恢复/RPO-RTO 验证、密钥轮换、外部 SLO/值班告警闭环。
 
 > P0 落地摘要:服务端 Casdoor JWT 鉴权(开关渐进)、DLQ 兜底+重放、后端镜像+compose 全栈、Flowable/wf_* 迁移版本化与干净库一键建表。全栈 `docker compose up` 未在本机执行(避免与运行中的 shadow :8300 抢端口),已过 config/build/迁移冒烟验证。详见 `deploy/README.md`。
 
 > 1.2 落地说明:`workflow.dlq.max-attempts`(默认 3)/`backoff-ms`。超限入 `workflow.dlq.v1` → `wf_dlq_event` 落库;
 > 运维 REST `GET /api/v1/dlq`、`POST /api/v1/dlq/{id}/replay`、`POST /api/v1/dlq/replay-all`。DLQ 面板留 P1(2.1)。
 
-> 1.1 落地说明:`workflow.security.enabled` 开关(默认 false)。启用需配 `WORKFLOW_OIDC_JWKS`(或 `WORKFLOW_OIDC_ISSUER`);
-> 租户派生需配 `WORKFLOW_TENANT_CLAIM`(未配则仍取 `X-Workflow-Tenant` 头,不臆造 Casdoor 租户映射)。
+> 1.1 落地说明:`workflow.security.enabled` 开关(默认 false)。生产 `prod` profile 要求同时配置 issuer、audience 与 tenant claim；
+> tenant claim 为可信来源，缺失或请求头不一致时 fail-closed。组权限精确匹配，不再按下划线截断。
 > 与前端 `VITE_AUTH_ENABLED` 分期对齐。
