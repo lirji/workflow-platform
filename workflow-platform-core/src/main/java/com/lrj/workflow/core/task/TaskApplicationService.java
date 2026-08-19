@@ -191,6 +191,59 @@ public class TaskApplicationService {
     }
 
     /**
+     * 办理身份与幂等相关的<b>保留流程变量名</b>:通用办理时若消费方在 variables 里传了这些 key,一律丢弃。
+     * 含 decision/opinion 是刻意的 —— 否则通用办理可注入 decision,被审方 BPMN 的结论网关误读。
+     */
+    private static final java.util.Set<String> RESERVED_VARS = java.util.Set.of(
+            "outcome", "comment", "actionId", "completedTaskId",
+            "actorSub", "actorUsername", "actorDisplayName", "decision", "opinion");
+
+    /**
+     * 通用人工任务办理(OA 请假 / 报销 / 用印等)。与 {@link #completeReview} <b>并存</b>:
+     * 审方链路语义特殊(PASS/REJECT + 结论网关 + waitApplied 泊车),不复用本方法。
+     *
+     * <p>outcome 不做枚举校验 —— 取值域由消费方 BPMN 的网关解释。中台若枚举结论,
+     * 每加一种业务结论都要改中台,违背"编排通用、语义归业务"。
+     *
+     * <p>身份三字段与 actionId 由服务端写入,<b>覆盖</b>消费方 variables 里的同名 key,
+     * 使 variables 无法成为伪造办理人的通道。
+     *
+     * @return 生成的 actionId(业务幂等键)
+     */
+    @Transactional
+    public String completeTask(String taskId, String tenant, String outcome, String comment,
+                               Map<String, Object> variables, Actor actor, TaskAccessContext access) {
+        if (outcome == null || outcome.isBlank()) {
+            throw new IllegalArgumentException("outcome 不能为空");
+        }
+        Task task = requireAuthorizedTask(tenant, taskId, access);
+        String actionId = UUID.randomUUID().toString();
+
+        Map<String, Object> vars = new HashMap<>();
+        if (variables != null) {
+            variables.forEach((k, v) -> {
+                if (k != null && !RESERVED_VARS.contains(k)) {
+                    vars.put(k, v);
+                }
+            });
+        }
+        vars.put("outcome", outcome);
+        vars.put("comment", comment);
+        vars.put("actionId", actionId);
+        vars.put("completedTaskId", taskId);
+        vars.put("actorSub", actor == null ? null : actor.subjectId());
+        vars.put("actorUsername", actor == null ? null : actor.username());
+        vars.put("actorDisplayName", actor == null ? null : actor.displayName());
+
+        String instanceId = task.getProcessInstanceId();
+        taskService.complete(taskId, vars);
+
+        transitionAfterComplete(instanceId);
+        log.info("通用任务办理完成 taskId={} outcome={} actionId={}", taskId, outcome, actionId);
+        return actionId;
+    }
+
+    /**
      * 审方办理(通过/驳回)。decision ∈ {PASS, REJECT}。生成 actionId 作业务幂等键。
      * @return 生成的 actionId
      */

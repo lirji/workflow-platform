@@ -2,6 +2,7 @@ package com.lrj.workflow.server.web;
 
 import com.lrj.workflow.core.task.TaskApplicationService;
 import com.lrj.workflow.protocol.api.CompleteReviewRequest;
+import com.lrj.workflow.protocol.api.CompleteTaskRequest;
 import com.lrj.workflow.protocol.api.TaskView;
 import com.lrj.workflow.protocol.event.Actor;
 import com.lrj.workflow.server.audit.WorkflowAudit;
@@ -74,6 +75,25 @@ public class TaskController {
                 identity.taskAccess());
         metrics.reviewCompleted(effTenant, req.decision());
         audit.reviewCompleted(effTenant, taskId, req.decision(), actionId, actor);
+        return ResponseEntity.accepted().body(Map.of("actionId", actionId, "status", "PENDING_BUSINESS"));
+    }
+
+    /**
+     * 通用人工任务办理(OA 等非审方业务)。POST /api/v1/tasks/{taskId}/complete
+     * 与 complete-review <b>并存</b>:审方保持原语义不变,新业务走这里。
+     * 同样返回 202 + PENDING_BUSINESS —— 人工决定已受理,业务落地经消费方自己的最终一致链路。
+     */
+    @PostMapping("/{taskId}/complete")
+    public ResponseEntity<Map<String, String>> complete(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String taskId,
+            @RequestBody CompleteTaskRequest req) {
+        String effTenant = identity.tenant(tenant);
+        Actor actor = identity.actor(new Actor(req.actorSub(), req.actorUsername(), req.actorDisplayName()));
+        String actionId = taskApp.completeTask(taskId, effTenant, req.outcome(), req.comment(),
+                req.variables(), actor, identity.taskAccess());
+        metrics.reviewCompleted(effTenant, req.outcome());
+        audit.taskOp(effTenant, "complete", taskId, req.outcome());
         return ResponseEntity.accepted().body(Map.of("actionId", actionId, "status", "PENDING_BUSINESS"));
     }
 

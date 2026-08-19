@@ -55,6 +55,23 @@ class TaskControllerTest {
     }
 
     @Test
+    void completeTaskReturns202AcceptedAndPassesOutcome() throws Exception {
+        when(taskApp.completeTask(ArgumentMatchers.eq("t9"), ArgumentMatchers.eq("oa"),
+                ArgumentMatchers.eq("APPROVE"), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .thenReturn("act-oa-1");
+        mvc.perform(post("/api/v1/tasks/t9/complete")
+                        .header("X-Workflow-Tenant", "oa")
+                        .contentType("application/json")
+                        .content("{\"outcome\":\"APPROVE\",\"comment\":\"同意\","
+                                + "\"variables\":{\"approverIndex\":1},"
+                                + "\"actorSub\":\"sub-9\",\"actorUsername\":\"lisi\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.actionId").value("act-oa-1"))
+                .andExpect(jsonPath("$.status").value("PENDING_BUSINESS"));
+    }
+
+    @Test
     void completeReviewReturns202Accepted() throws Exception {
         when(taskApp.completeReview(ArgumentMatchers.eq("t1"), ArgumentMatchers.eq("his"),
                 ArgumentMatchers.eq("PASS"), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))

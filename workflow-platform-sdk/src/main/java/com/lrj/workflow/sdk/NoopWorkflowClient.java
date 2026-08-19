@@ -1,6 +1,7 @@
 package com.lrj.workflow.sdk;
 
 import com.lrj.workflow.protocol.api.CompleteReviewRequest;
+import com.lrj.workflow.protocol.api.CompleteTaskRequest;
 import com.lrj.workflow.protocol.api.TaskView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,13 @@ public class NoopWorkflowClient implements WorkflowClient {
     public String completeReview(String tenant, String taskId, CompleteReviewRequest request) {
         requireWritesEnabled("completeReview");
         log.debug("WorkflowClient 未启用(Noop),completeReview 跳过 taskId={}", taskId);
+        return null;
+    }
+
+    @Override
+    public String completeTask(String tenant, String taskId, CompleteTaskRequest request) {
+        requireWritesEnabled("completeTask");
+        log.debug("WorkflowClient 未启用(Noop),completeTask 跳过 taskId={}", taskId);
         return null;
     }
 

@@ -1,6 +1,8 @@
 package com.lrj.workflow.sdk;
 
 import com.lrj.workflow.protocol.api.CompleteReviewRequest;
+import com.lrj.workflow.protocol.api.CompleteTaskRequest;
+import com.lrj.workflow.protocol.api.ProcessInstanceView;
 import com.lrj.workflow.protocol.api.TaskView;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -70,6 +72,29 @@ public class RemoteWorkflowClient implements WorkflowClient {
                 .retrieve()
                 .body(Map.class);
         return resp == null ? null : (String) resp.get("actionId");
+    }
+
+    @Override
+    public String completeTask(String tenant, String taskId, CompleteTaskRequest request) {
+        Map<?, ?> resp = http.post().uri("/api/v1/tasks/{taskId}/complete", taskId)
+                .header("X-Workflow-Tenant", tenant)
+                .body(request)
+                .retrieve()
+                .body(Map.class);
+        return resp == null ? null : (String) resp.get("actionId");
+    }
+
+    @Override
+    public List<ProcessInstanceView> findProcesses(String tenant, String definitionKey, String businessKey) {
+        // 路径是 /process-instances 不是 /processes，且 definitionKey 是【必填】query 参数——
+        // 少传会被 Spring 判成 400，路径写错则是 404，两种都不会告诉你"你少了个参数"。
+        return http.get().uri(uri -> uri.path("/api/v1/process-instances")
+                        .queryParam("definitionKey", definitionKey)
+                        .queryParam("businessKey", businessKey).build())
+                .header("X-Workflow-Tenant", tenant)
+                .retrieve()
+                .body(new org.springframework.core.ParameterizedTypeReference<List<ProcessInstanceView>>() {
+                });
     }
 
     @Override

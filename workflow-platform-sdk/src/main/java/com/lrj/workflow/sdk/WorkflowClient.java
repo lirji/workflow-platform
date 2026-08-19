@@ -1,6 +1,8 @@
 package com.lrj.workflow.sdk;
 
 import com.lrj.workflow.protocol.api.CompleteReviewRequest;
+import com.lrj.workflow.protocol.api.CompleteTaskRequest;
+import com.lrj.workflow.protocol.api.ProcessInstanceView;
 import com.lrj.workflow.protocol.api.TaskView;
 
 import java.util.List;
@@ -16,6 +18,25 @@ public interface WorkflowClient {
 
     /** 办理审方(通过/驳回),返回 server 生成的 actionId;不可用时返回 null(Noop)。 */
     String completeReview(String tenant, String taskId, CompleteReviewRequest request);
+
+    /**
+     * 办理通用人工任务(OA 请假 / 报销 / 用印等),返回 server 生成的 actionId。
+     * 与 {@link #completeReview} 并存:审方保持原语义。
+     *
+     * <p>声明为 default 而非抽象方法 —— 既有的第三方 {@code WorkflowClient} 实现(如测试替身)
+     * 不会因为 SDK 升级而编译不过;未覆写就调用会明确报错,不会静默无操作。
+     */
+    default String completeTask(String tenant, String taskId, CompleteTaskRequest request) {
+        throw new UnsupportedOperationException("当前 WorkflowClient 实现未支持 completeTask");
+    }
+
+    /**
+     * 按 businessKey 查流程实例(含是否仍在运行)。消费方用它把自己的单据与中台实例对上,
+     * 以及发现"流程已结束"这个中台不会主动推的事实。
+     */
+    default List<ProcessInstanceView> findProcesses(String tenant, String definitionKey, String businessKey) {
+        return List.of();
+    }
 
     /** 认领任务(设办理人为 userId)。 */
     void claimTask(String tenant, String taskId, String userId);
