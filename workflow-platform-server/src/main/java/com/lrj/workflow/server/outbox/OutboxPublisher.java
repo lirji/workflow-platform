@@ -32,6 +32,7 @@ public class OutboxPublisher implements InitializingBean {
     private final OutboxEventRepository outbox;
     private final KafkaTemplate<String, String> kafka;
     private final WorkflowMetrics metrics;
+    private final WorkflowOutboundSigner signer;
 
     @Value("${workflow.outbox.batch-size:100}")
     int batchSize;
@@ -49,10 +50,11 @@ public class OutboxPublisher implements InitializingBean {
     int retryBackoffSeconds;
 
     public OutboxPublisher(OutboxEventRepository outbox, KafkaTemplate<String, String> kafka,
-                           WorkflowMetrics metrics) {
+                           WorkflowMetrics metrics, WorkflowOutboundSigner signer) {
         this.outbox = outbox;
         this.kafka = kafka;
         this.metrics = metrics;
+        this.signer = signer;
     }
 
     @Override
@@ -81,7 +83,9 @@ public class OutboxPublisher implements InitializingBean {
                 continue;
             }
             try {
-                kafka.send(row.topic(), row.msgKey(), row.payload()).get(sendTimeoutSeconds, TimeUnit.SECONDS);
+                // 签名覆盖 outbox 保存的精确 JSON；发送前不得重新序列化，否则消费方 HMAC 必然失败。
+                kafka.send(signer.record(row.topic(), row.msgKey(), row.payload()))
+                        .get(sendTimeoutSeconds, TimeUnit.SECONDS);
                 if (!outbox.markSent(row.eventId(), leaseOwner)) {
                     log.warn("outbox 发送成功但租约已失效，忽略陈旧写 eventId={} topic={}", row.eventId(), row.topic());
                 }

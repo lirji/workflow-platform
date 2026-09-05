@@ -7,21 +7,21 @@
 ```bash
 cd deploy
 cp .env.example .env                     # 按需改端口/开关
-docker compose -p workflow-platform down --remove-orphans   # 预检:清残留(见 compose-preflight.sh)
-docker compose -p workflow-platform up -d --build            # 首次构建镜像(in-Docker Maven,较慢)
-docker compose -p workflow-platform ps
+./compose.sh down --remove-orphans        # 自动加载 auth-platform 中央入口端口
+./compose.sh up -d --build                # 首次构建镜像(in-Docker Maven,较慢)
+./compose.sh ps
 curl -s localhost:${WORKFLOW_SERVER_PORT:-8300}/actuator/health   # {"status":"UP"}
-curl -i localhost:${WORKFLOW_CONSOLE_PORT:-8302}/healthz          # HTTP 204
+curl -i localhost:${WORKFLOW_UI_PORT:-8302}/healthz               # HTTP 204
 ```
 
 - 后端镜像:`deploy/Dockerfile` 多阶段(build 全 reactor → server/admin 各取可执行 jar)。构建上下文=仓库根(见根 `.dockerignore`)。
 - 前端镜像:`workflow-console/Dockerfile` 构建 Vite 产物并由 nginx 托管；`/api` 同源反代到 compose 服务 `server:8300`。
 - server/admin 连容器内 `postgres:5432`、`kafka:9092`;host 访问 Kafka 用 `:${WORKFLOW_KAFKA_HOST_PORT}`(默认 29092)。
-- 端口全变量化,避开现有项目占用(his 9000-9007 / auth 8000,8200-8202 / langchain4j 9092 等)。默认前端入口为 `http://localhost:8302/login`。
+- 内部服务端口继续由本项目 `.env` 管理；浏览器入口只由 `auth-platform/deploy/platform-ports.env` 的 `WORKFLOW_UI_PORT` 管理。
 
 ## 纪律与坑
 
-- **端口冲突**:若已在 host 用 `mvn spring-boot:run` 跑 server(:8300)或跑着 shadow 联调栈,勿同时 `compose up server`(会抢 :8300);改 `WORKFLOW_SERVER_PORT` 或先停 host 实例。
+- **端口冲突**:若已在 host 用 `mvn spring-boot:run` 跑 server(:8300)或跑着 shadow 联调栈,勿同时 `compose up server`(会抢 :8300);浏览器入口只改 auth-platform 的中央注册表，冲突时先释放占用，不自动换端口。
 - **复用现有 PG/Redis**:compose 用固定 `container_name`(workflow-postgres/redis),已在跑则复用(数据卷 `workflow-pg-data` 保留);Flyway 幂等续跑迁移(baseline + V1–V5)。
 - **Kafka 独立**:本 compose 的 Kafka 用 `kafka:9092`(容器内)/`:29092`(host),与其它项目 :9092、shadow 临时 :9095 隔离。
 - 起前务必 `down --remove-orphans`(risk/auth/his 都踩过 docker-proxy 残留占端口)。

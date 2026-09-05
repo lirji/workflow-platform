@@ -14,7 +14,7 @@ const centered: React.CSSProperties = {
 
 /**
  * 路由守卫。Stage 1(authEnabled=false):直接放行,直连 :8300 联调。
- * Stage 2:未登录→跳自建品牌登录页 /login(带 state.from 回跳原深链);已登录但非 PHARMACIST/ADMIN→403。
+ * Stage 2:未登录→跳自建品牌登录页 /login(带 state.from 回跳原深链);已登录但非可读组→403。
  */
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const auth = useAuth()
@@ -40,7 +40,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
       <Result
         status="403"
         title="无访问权限"
-        subTitle="需要 Casdoor 组 PHARMACIST 或 ADMIN"
+        subTitle="需要 Casdoor 组 PHARMACIST、BENEFIT_SKU_REVIEWER 或 ADMIN"
         extra={<Button onClick={() => void auth.signoutRedirect()}>切换账号</Button>}
       />
     )

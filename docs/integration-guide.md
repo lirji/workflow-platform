@@ -186,7 +186,7 @@ REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUT
 - `tenant`:配置 `workflow.security.tenant-claim` 后，该 claim 是唯一可信来源；缺 claim 或请求头与 claim 不一致均返回 403。
 - 普通用户只能看到自己已认领或自己/所属组可候选的任务；只能给自己认领，且认领使用引擎原子操作；转办、委派、撤回只允许当前办理人。`ADMIN` 可执行全量任务运维。
 - `issuer`、标准时效与 `audience` 同时校验。`prod` profile 启动时会校验安全开关、issuer、audience、tenant claim、schema 与试点自动部署配置，不满足即拒绝启动。
-- Kafka 不经过 HTTP JWT：生产必须设置 `WORKFLOW_KAFKA_TRUST_ENABLED=true`、`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=source=tenant,...` 和 `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=source=<Base64URL密钥>,...`。每个绑定 source 的解码密钥至少 32 字节；producer 对最终发送的原始 JSON UTF-8 字节计算 HMAC-SHA256，并把 Base64URL 签名放入 `workflow-signature-v1` header。应用校验用于认证 source 声明和 tenant 授权，broker 仍必须启用 SASL/TLS 与 producer topic ACL。
+- Kafka 不经过 HTTP JWT：生产必须设置 `WORKFLOW_KAFKA_TRUST_ENABLED=true`、`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=source=tenant,...` 和 `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=source=<Base64URL密钥>,...`。每个绑定 source 以及中台出站 source `workflow-server` 的解码密钥至少 32 字节；producer 对最终发送的原始 JSON UTF-8 字节计算 HMAC-SHA256，并把 Base64URL 签名放入 `workflow-signature-v1` header。应用校验用于认证 source 声明和 tenant 授权，broker 仍必须启用 SASL/TLS 与 producer topic ACL。
 
 **服务端安全与 Kafka 信任配置**(环境变量):
 
@@ -200,7 +200,7 @@ REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUT
 | `tenant-claim` | `WORKFLOW_TENANT_CLAIM` | 承载租户的 claim；生产必填 |
 | `kafka-trust.enabled` | `WORKFLOW_KAFKA_TRUST_ENABLED` | 生产必须 true |
 | `kafka-trust.source-tenant-bindings` | `WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS` | `source=tenant,...` allowlist |
-| `kafka-trust.source-signing-keys` | `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS` | `source=Base64URL密钥,...`；每个绑定 source 至少 32 字节 |
+| `kafka-trust.source-signing-keys` | `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS` | `source=Base64URL密钥,...`；每个绑定 source 及中台出站 source `workflow-server` 均至少 32 字节 |
 
 SDK 会在每次请求时调用 `WorkflowBearerTokenProvider` 并附带 `Authorization: Bearer ...`；启用 `require-authorization` 后，取不到令牌会在发请求前失败。
 

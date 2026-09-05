@@ -11,7 +11,7 @@
 
 ## 1. 这是什么 / 解决什么
 
-关键业务动作需要**人工审批/复核**,且该决定要**异步、可靠、幂等**地落实回业务系统时,用本中台。首个试点是 HIS **审方**(`hisRxReview`):门诊处方由药师复核,通过/驳回的决定经 Kafka 最终一致地回到 his 业务系统。
+关键业务动作需要**人工审批/复核**,且该决定要**异步、可靠、幂等**地落实回业务系统时,用本中台。现有流程包括 HIS **审方**(`hisRxReview`)和权益 SKU 首次上线(`benefitSkuGoLive`)，决定经 Kafka 最终一致地回到各业务系统。
 
 同一套骨架可复用于:退费审批、贵重药品审批、危急值确认、放款/风控审批、退款退货、权限授予审批、变更管理 CAB 等——每个新场景 = 部署一份 BPMN + 消费方写发起/落地适配器(可靠消息/幂等/鉴权/指标/审计/运维/DLQ 全复用)。新流程接入配方见 [`docs/onboarding-new-process.md`](docs/onboarding-new-process.md)。
 
@@ -95,17 +95,23 @@ cd workflow-console && pnpm install && cp .env.example .env.local && pnpm dev
 ```
 
 启动后:待办中心 `/tasks`、流程轨迹 `/process/hisRxReview`、运维面板 `/ops`、设计器 `/designer`。
-需要 tenant=`his` 的审方待办才有数据;`server` 启动会自动部署试点 BPMN `hisRxReview`(`workflow.pilot.auto-deploy=false` 可关)。
+`server` 启动会向 tenant=`his` 部署审方 BPMN，并向 `WORKFLOW_BENEFIT_TENANT`（默认 `dev-tenant`）部署
+`benefitSkuGoLive`（`workflow.pilot.auto-deploy=false` 可整体关闭）。权益审批任务为 `skuGoLiveReview`，候选组为
+`BENEFIT_SKU_REVIEWER`；办理接口只返回 202 `PENDING_BUSINESS`，收到业务 ACK `benefitSkuGoLiveApplied` 后流程才办结。
+
+启用 Kafka 信任门禁时，`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS` 至少登记所有入站 producer，例如
+`benefit-center=dev-tenant`；`WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS` 除入站 source 外还必须配置
+`workflow-server=<Base64URL key>`，以便 outbox relay 为 `workflow.action.requested.v1` 的精确 JSON 添加 HMAC header。
 
 ### 5.2 一键全栈(Docker Compose)
 
 ```bash
 cd deploy && cp .env.example .env
-docker compose -p workflow-platform up -d --build      # PostgreSQL + Redis + Kafka + server + admin + console
+./compose.sh up -d --build                              # 自动加载 auth-platform 中央入口端口
 curl -s localhost:8300/actuator/health                  # {"status":"UP"}
 ```
 
-端口/开关/迁移/HA/监控细节见 **[`deploy/README.md`](deploy/README.md)**。前端入口为 `http://localhost:8302/login`。
+端口/开关/迁移/HA/监控细节见 **[`deploy/README.md`](deploy/README.md)**。前端入口由 `auth-platform/deploy/platform-ports.env` 的 `WORKFLOW_UI_PORT` 统一分配。
 
 ## 6. 测试与门禁
 

@@ -5,14 +5,21 @@ cd "$(dirname "$0")/.."
 
 PROJECT="${COMPOSE_PROJECT_NAME:-workflow-platform}"
 
+PLATFORM_PORTS_LOADER="${PLATFORM_PORTS_LOADER:-../../auth-platform/deploy/load-platform-ports.sh}"
+if [[ -r "${PLATFORM_PORTS_LOADER}" ]]; then
+  # shellcheck source=/dev/null
+  . "${PLATFORM_PORTS_LOADER}"
+fi
+WORKFLOW_UI_PORT="${WORKFLOW_UI_PORT:-8302}"
+
 echo "==> down --remove-orphans (project=${PROJECT})"
-docker compose -p "${PROJECT}" down --remove-orphans || true
+COMPOSE_PROJECT_NAME="${PROJECT}" ./compose.sh down --remove-orphans || true
 
 # 从 .env 读端口(缺省回退)
 PG_PORT="${WORKFLOW_PG_PORT:-25432}"
 REDIS_PORT="${WORKFLOW_REDIS_PORT:-26379}"
 
-for p in "${PG_PORT}" "${REDIS_PORT}"; do
+for p in "${PG_PORT}" "${REDIS_PORT}" "${WORKFLOW_UI_PORT}"; do
   if lsof -nP -iTCP:"${p}" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "!! 端口 ${p} 仍被占用,请先释放:"
     lsof -nP -iTCP:"${p}" -sTCP:LISTEN | tail -n +1

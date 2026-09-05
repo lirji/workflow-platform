@@ -33,6 +33,9 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 workflow:
+  pilot:
+    # 试点自动部署的 benefit tenant；生产可关闭 auto-deploy 后通过 admin 部署相同定义。
+    benefit-tenant: ${WORKFLOW_BENEFIT_TENANT:dev-tenant}
   outbox:
     batch-size: 100
     poll-ms: 1000

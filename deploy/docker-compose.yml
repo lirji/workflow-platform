@@ -147,7 +147,7 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "${WORKFLOW_CONSOLE_PORT:-8302}:8302"
+      - "${WORKFLOW_UI_PORT:-8302}:8302"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8302/healthz || exit 1"]
       interval: 10s

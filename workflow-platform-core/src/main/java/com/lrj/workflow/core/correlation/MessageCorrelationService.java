@@ -21,8 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class MessageCorrelationService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageCorrelationService.class);
-    private static final String MSG = "hisRxReviewApplied";
-
     public enum Outcome { CORRELATED, WAITING_SUBSCRIPTION, INSTANCE_GONE, ACTION_MISMATCH }
 
     private final RuntimeService runtimeService;
@@ -59,17 +57,31 @@ public class MessageCorrelationService {
             log.warn("关联:actionId 不匹配 pid={} pending={} applied={}", pid, pendingActionId, applied.actionId());
             return Outcome.ACTION_MISMATCH;
         }
+        String messageName = ackMessageName(applied.processDefinitionKey());
+        if (messageName == null) {
+            log.warn("关联:流程定义没有登记 ACK message definition={}", applied.processDefinitionKey());
+            return Outcome.ACTION_MISMATCH;
+        }
         Execution exec = runtimeService.createExecutionQuery()
-                .processInstanceId(pid).messageEventSubscriptionName(MSG).singleResult();
+                .processInstanceId(pid).messageEventSubscriptionName(messageName).singleResult();
         if (exec == null) {
             log.info("关联:message 订阅未就绪(回执早到) pid={}", pid);
             return Outcome.WAITING_SUBSCRIPTION;
         }
         runtimeService.setVariable(pid, "appliedStatus", applied.status().name());
-        runtimeService.messageEventReceived(MSG, exec.getId());
+        runtimeService.messageEventReceived(messageName, exec.getId());
         transition(link.processInstanceId());
         log.info("关联成功并推进 pid={} status={}", pid, applied.status());
         return Outcome.CORRELATED;
+    }
+
+    /** 每个流程使用自己的 message，避免 ACK 被硬编码到 HIS 审方订阅。 */
+    private static String ackMessageName(String processDefinitionKey) {
+        return switch (processDefinitionKey) {
+            case "hisRxReview" -> "hisRxReviewApplied";
+            case "benefitSkuGoLive" -> "benefitSkuGoLiveApplied";
+            default -> null;
+        };
     }
 
     private void transition(String instanceId) {

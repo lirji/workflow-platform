@@ -4,6 +4,7 @@ import type { ReviewDecision, TaskView } from '../../api/types'
 import { useCompleteReview } from '../../hooks/useTasks'
 import { useAuthStore } from '../../store/authStore'
 import { errMsg, statusOf } from '../../api/errors'
+import { inboxCopy } from '../../pages/taskInbox'
 
 interface Props {
   open: boolean
@@ -30,6 +31,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
   const userId = useAuthStore((s) => s.userId)
   const username = useAuthStore((s) => s.username)
   const decision = Form.useWatch('decision', form)
+  const copy = inboxCopy(task?.processDefinitionKey || 'hisRxReview')
 
   useEffect(() => {
     if (open) form.setFieldsValue({ decision: 'PASS', opinion: '' })
@@ -45,7 +47,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
     }
     const confirmed = await new Promise<boolean>((resolve) => {
       modal.confirm({
-        title: v.decision === 'PASS' ? '确认通过审方?' : '确认驳回审方?',
+        title: v.decision === 'PASS' ? copy.confirmPass : copy.confirmReject,
         content: '办理提交后不可撤销,业务落地经异步最终一致(可稍后在"近期办理"查看落地状态)。',
         okText: '确认提交',
         cancelText: '再想想',
@@ -77,7 +79,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
 
   return (
     <Drawer
-      title="办理审方"
+      title={copy.drawerTitle}
       open={open}
       onClose={onClose}
       width={isMobile ? '100%' : 520}
@@ -96,7 +98,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
       {task && (
         <>
           <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
-            <Descriptions.Item label="就诊(businessKey)">
+            <Descriptions.Item label={`${copy.businessKeyLabel}(businessKey)`}>
               <span className="mono">{task.businessKey}</span>
             </Descriptions.Item>
             <Descriptions.Item label="任务">{task.name}</Descriptions.Item>
@@ -105,7 +107,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
             </Descriptions.Item>
           </Descriptions>
           <Form form={form} layout="vertical" requiredMark>
-            <Form.Item name="decision" label="审方决定" rules={[{ required: true }]}>
+            <Form.Item name="decision" label={copy.decisionLabel} rules={[{ required: true }]}>
               <Radio.Group>
                 <Radio.Button value="PASS">通过</Radio.Button>
                 <Radio.Button value="REJECT">驳回</Radio.Button>
@@ -113,14 +115,14 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
             </Form.Item>
             <Form.Item
               name="opinion"
-              label="审方意见"
+              label={copy.opinionLabel}
               rules={decision === 'REJECT' ? [{ required: true, message: '驳回必须填写意见' }] : []}
             >
               <Input.TextArea
                 rows={4}
                 maxLength={500}
                 showCount
-                placeholder={decision === 'REJECT' ? '请填写驳回原因(必填)' : '可选:审方意见'}
+                placeholder={decision === 'REJECT' ? '请填写驳回原因(必填)' : copy.opinionPlaceholder}
               />
             </Form.Item>
           </Form>

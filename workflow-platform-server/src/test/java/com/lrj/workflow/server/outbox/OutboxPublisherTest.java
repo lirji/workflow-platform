@@ -5,6 +5,7 @@ import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
@@ -19,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -32,7 +34,8 @@ class OutboxPublisherTest {
     @SuppressWarnings("unchecked")
     private final KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
     private final WorkflowMetrics metrics = mock(WorkflowMetrics.class);
-    private final OutboxPublisher publisher = new OutboxPublisher(outbox, kafka, metrics);
+    private final WorkflowOutboundSigner signer = new WorkflowOutboundSigner(false, "");
+    private final OutboxPublisher publisher = new OutboxPublisher(outbox, kafka, metrics, signer);
 
     @BeforeEach
     void config() {
@@ -58,7 +61,7 @@ class OutboxPublisherTest {
     @Test
     void successfulSendMarksSentWithTheExactOneTimeLeaseToken() {
         when(outbox.claimBatch(eq(10), anyString(), eq(30))).thenReturn(List.of(row(0)));
-        when(kafka.send("workflow.action.requested.v1", "key-1", "{}"))
+        when(kafka.send(any(ProducerRecord.class)))
                 .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
         when(outbox.markSent(eq("evt-1"), anyString())).thenReturn(true);
 
@@ -77,7 +80,7 @@ class OutboxPublisherTest {
         when(outbox.claimBatch(eq(10), anyString(), eq(30))).thenReturn(List.of(row(1)));
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
         failed.completeExceptionally(new IllegalStateException("broker unavailable"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(failed);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(failed);
         when(outbox.reschedule(eq("evt-1"), anyString(), eq(10), anyString())).thenReturn(true);
 
         publisher.publishBatch();
@@ -93,7 +96,7 @@ class OutboxPublisherTest {
         when(outbox.claimBatch(eq(10), anyString(), eq(30))).thenReturn(List.of(row(2)));
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
         failed.completeExceptionally(new IllegalStateException("permanent failure"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(failed);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(failed);
         when(outbox.markFailed(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
@@ -111,7 +114,7 @@ class OutboxPublisherTest {
         @SuppressWarnings("unchecked")
         CompletableFuture<SendResult<String, String>> pending = mock(CompletableFuture.class);
         when(pending.get(2, TimeUnit.SECONDS)).thenThrow(new TimeoutException("ack timeout"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(pending);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(pending);
         when(outbox.markDeliveryUnknown(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
@@ -131,7 +134,7 @@ class OutboxPublisherTest {
         CompletableFuture<SendResult<String, String>> future = mock(CompletableFuture.class);
         when(future.get(2, TimeUnit.SECONDS)).thenThrow(new ExecutionException(
                 new org.apache.kafka.common.errors.TimeoutException("delivery timeout")));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(future);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(future);
         when(outbox.markDeliveryUnknown(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
@@ -149,7 +152,7 @@ class OutboxPublisherTest {
         @SuppressWarnings("unchecked")
         CompletableFuture<SendResult<String, String>> future = mock(CompletableFuture.class);
         when(future.get(2, TimeUnit.SECONDS)).thenThrow(new CancellationException("cancelled"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(future);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(future);
         when(outbox.markDeliveryUnknown(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
@@ -167,12 +170,12 @@ class OutboxPublisherTest {
         @SuppressWarnings("unchecked")
         CompletableFuture<SendResult<String, String>> future = mock(CompletableFuture.class);
         when(future.get(2, TimeUnit.SECONDS)).thenThrow(new InterruptedException("shutdown"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(future);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(future);
         when(outbox.markDeliveryUnknown(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
 
-        verify(kafka, times(1)).send(anyString(), anyString(), anyString());
+        verify(kafka, times(1)).send(any(ProducerRecord.class));
         verify(outbox, never()).renewLease(eq("evt-2"), anyString(), eq(30));
         assertThat(Thread.interrupted()).isTrue(); // 同时清理本测试线程的中断标记。
     }
@@ -181,13 +184,13 @@ class OutboxPublisherTest {
     void kafkaSynchronousInterruptStopsTheBatchAndIsDeliveryUnknown() {
         when(outbox.claimBatch(eq(10), anyString(), eq(30)))
                 .thenReturn(List.of(row("evt-1", 0), row("evt-2", 0)));
-        when(kafka.send(anyString(), anyString(), anyString())).thenThrow(
+        when(kafka.send(any(ProducerRecord.class))).thenThrow(
                 new org.apache.kafka.common.errors.InterruptException(new InterruptedException("shutdown")));
         when(outbox.markDeliveryUnknown(eq("evt-1"), anyString(), anyString())).thenReturn(true);
 
         publisher.publishBatch();
 
-        verify(kafka, times(1)).send(anyString(), anyString(), anyString());
+        verify(kafka, times(1)).send(any(ProducerRecord.class));
         verify(outbox).markDeliveryUnknown(eq("evt-1"), anyString(),
                 org.mockito.ArgumentMatchers.contains("InterruptException"));
         verify(outbox, never()).renewLease(eq("evt-2"), anyString(), eq(30));
@@ -199,7 +202,7 @@ class OutboxPublisherTest {
         when(outbox.claimBatch(eq(10), anyString(), eq(30))).thenReturn(List.of(row(2)));
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
         failed.completeExceptionally(new IllegalStateException("late result"));
-        when(kafka.send(anyString(), anyString(), anyString())).thenReturn(failed);
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(failed);
         when(outbox.markFailed(eq("evt-1"), anyString(), anyString())).thenReturn(false);
 
         publisher.publishBatch();
@@ -214,7 +217,7 @@ class OutboxPublisherTest {
 
         publisher.publishBatch();
 
-        verify(kafka, never()).send(anyString(), anyString(), anyString());
+        verify(kafka, never()).send(any(ProducerRecord.class));
         verify(outbox, never()).markSent(anyString(), anyString());
     }
 

@@ -81,6 +81,13 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('PROTECTED_CONTENT')).toBeInTheDocument()
   })
 
+  it('已登录 + BENEFIT_SKU_REVIEWER → 放行', () => {
+    setAuth({ isAuthenticated: true })
+    useAuthStore.setState({ authorities: ['BENEFIT_SKU_REVIEWER'] })
+    renderProtected()
+    expect(screen.getByText('PROTECTED_CONTENT')).toBeInTheDocument()
+  })
+
   it('已登录但无相关组 → 403', () => {
     setAuth({ isAuthenticated: true })
     useAuthStore.setState({ authorities: ['GUEST'] })

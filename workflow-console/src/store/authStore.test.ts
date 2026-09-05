@@ -17,4 +17,9 @@ describe('组名门控(归一化后匹配 BPMN candidateGroups)', () => {
     expect(canRead(['viewer', 'guest'])).toBe(false)
     expect(isAdmin([])).toBe(false)
   })
+
+  it('BENEFIT_SKU_REVIEWER 可读、非管理员', () => {
+    expect(canRead(['BENEFIT_SKU_REVIEWER'])).toBe(true)
+    expect(isAdmin(['BENEFIT_SKU_REVIEWER'])).toBe(false)
+  })
 })
