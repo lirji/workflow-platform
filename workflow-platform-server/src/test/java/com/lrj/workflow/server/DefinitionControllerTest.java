@@ -24,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(DefinitionController.class)
@@ -75,5 +76,23 @@ class DefinitionControllerTest {
                 .andExpect(status().isNotFound());
 
         verify(repositoryService, never()).createProcessDefinitionQuery();
+    }
+
+    @Test
+    void availabilityDistinguishesMissingDefinitionFromEmptyTaskList() throws Exception {
+        when(identity.tenant("tenant-without-definition")).thenReturn("tenant-without-definition");
+        ProcessDefinitionQuery definitions = mock(ProcessDefinitionQuery.class);
+        when(repositoryService.createProcessDefinitionQuery()).thenReturn(definitions);
+        when(definitions.processDefinitionKey("benefitSkuGoLive")).thenReturn(definitions);
+        when(definitions.processDefinitionTenantId("tenant-without-definition")).thenReturn(definitions);
+        when(definitions.count()).thenReturn(0L);
+
+        mvc.perform(get("/api/v1/definitions/benefitSkuGoLive/availability")
+                        .header("X-Workflow-Tenant", "tenant-without-definition"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value("tenant-without-definition"))
+                .andExpect(jsonPath("$.definitionKey").value("benefitSkuGoLive"))
+                .andExpect(jsonPath("$.deployed").value(false))
+                .andExpect(jsonPath("$.status").value("DEFINITION_MISSING"));
     }
 }

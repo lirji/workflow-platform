@@ -6,6 +6,7 @@ import com.lrj.workflow.core.process.ProcessApplicationService;
 import com.lrj.workflow.protocol.event.EventEnvelopeV1;
 import com.lrj.workflow.protocol.event.StartProcessCommandV1;
 import com.lrj.workflow.protocol.event.WorkflowTopics;
+import com.lrj.workflow.server.PilotDefinitionProvisioner;
 import com.lrj.workflow.server.metrics.WorkflowMetrics;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
@@ -13,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 /**
  * 消费 workflow.command.start:inbox 去重 → 幂等发起流程。start 本身四元组幂等,故至少一次投递安全。
@@ -28,16 +31,19 @@ public class WorkflowStartListener {
     private final WorkflowMetrics metrics;
     private final LifecyclePublisher lifecycle;
     private final KafkaEnvelopeTrustValidator trust;
+    private final Optional<PilotDefinitionProvisioner> pilotDefinitions;
 
     public WorkflowStartListener(EnvelopeCodec codec, InboxEventRepository inbox,
                                  ProcessApplicationService processApp, WorkflowMetrics metrics,
-                                 LifecyclePublisher lifecycle, KafkaEnvelopeTrustValidator trust) {
+                                 LifecyclePublisher lifecycle, KafkaEnvelopeTrustValidator trust,
+                                 Optional<PilotDefinitionProvisioner> pilotDefinitions) {
         this.codec = codec;
         this.inbox = inbox;
         this.processApp = processApp;
         this.metrics = metrics;
         this.lifecycle = lifecycle;
         this.trust = trust;
+        this.pilotDefinitions = pilotDefinitions;
     }
 
     @KafkaListener(topics = WorkflowTopics.COMMAND_START, groupId = "workflow-server")
@@ -52,6 +58,9 @@ public class WorkflowStartListener {
             return;
         }
         try {
+            // 只有通过 HMAC/source/tenant 校验的事件才能触发试点定义按 tenant 补部署。
+            pilotDefinitions.ifPresent(definitions -> definitions.provisionForTrustedStart(
+                    env.tenantId(), env.payload().processDefinitionKey()));
             ProcessLink link = processApp.start(env.tenantId(), env.payload());
             metrics.processStarted(env.tenantId(), env.payload().processDefinitionKey());
             lifecycle.publish(env.tenantId(), link.processInstanceId(), link.processDefinitionKey(), link.businessKey(), "STARTED");

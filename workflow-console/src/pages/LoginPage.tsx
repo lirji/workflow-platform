@@ -68,10 +68,10 @@ export default function LoginPage() {
       </div>
 
       <Typography.Title level={2} style={{ color: '#fff', margin: 0, maxWidth: 500, lineHeight: 1.3 }}>
-        统一身份认证接入 · 一处登录,全平台通行
+        统一身份认证接入 · 按流程办理，不是全平台一个租户
       </Typography.Title>
       <Typography.Paragraph style={{ color: 'rgba(255,255,255,0.82)', fontSize: 16, maxWidth: 480, margin: 0 }}>
-        经 Casdoor 单点登录(OIDC 授权码 + PKCE),按候选组授权 —— 与其它平台统一身份、统一鉴权。
+        经 Casdoor 单点登录。审方与 SKU 上线是两类流程、两套租户，进入后请先切换流程种类。
       </Typography.Paragraph>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>

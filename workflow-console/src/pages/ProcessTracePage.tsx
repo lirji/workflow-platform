@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Card, Space, Timeline, Typography } from 'antd'
+import { Card, Input, Space, Timeline, Typography } from 'antd'
 import { PageHeader } from '../components/layout/PageHeader'
 import { EmptyState, ErrorState, PageSkeleton } from '../components/common/AsyncState'
 import { PhaseTag } from '../components/domain/PhaseTag'
@@ -10,30 +10,33 @@ import { getDefinitionXml } from '../api/process'
 import { newestProcessInstance, useProcessPhase, useTimeline } from '../hooks/useProcess'
 import { errMsg } from '../api/errors'
 import type { TimelineEntry } from '../api/types'
+import { businessKeyLabel, definitionLabel } from '../workbench/definitionLabel'
+import { useWorkbenchStore } from '../store/workbenchStore'
+import { useWorkbenchUrl } from '../workbench/useWorkbenchUrl'
 
 /**
- * 流程轨迹只读页(懒加载)。默认渲染定义图;若带 ?businessKey= 则叠加该实例的轨迹高亮 + 时间线。
+ * 流程轨迹只读页。无定义时请先选择；带 ?businessKey= 则叠加实例轨迹。
  */
 export default function ProcessTracePage() {
-  const { key = 'hisRxReview' } = useParams()
-  const [sp] = useSearchParams()
-  const businessKey = sp.get('businessKey') ?? undefined
+  const { key } = useParams()
+  const { filters, replaceFilters } = useWorkbenchUrl()
+  const tenantId = useWorkbenchStore((s) => s.tenantId)
+  const definitionKey = key
+  const businessKey = filters.businessKey
 
-  const instQuery = useProcessPhase(key, businessKey ?? '', !!businessKey)
+  const instQuery = useProcessPhase(definitionKey ?? '', businessKey ?? '', !!definitionKey && !!businessKey)
   const instances = instQuery.data
   const latest = newestProcessInstance(instances)
-  const noInstance = !!businessKey && instQuery.isSuccess && !latest
+  const noInstance = !!definitionKey && !!businessKey && instQuery.isSuccess && !latest
   const xmlQuery = useQuery({
-    queryKey: ['definition-xml', key, latest?.processInstanceId ?? 'latest'],
-    queryFn: () => getDefinitionXml(key, latest?.processInstanceId),
-    // 带 businessKey 时先确定实例，避免先渲染最新定义再闪换成历史版本。
-    enabled: !businessKey || (!!latest && instQuery.isSuccess),
+    queryKey: ['definition-xml', definitionKey, latest?.processInstanceId ?? 'latest'],
+    queryFn: () => getDefinitionXml(definitionKey!, latest?.processInstanceId),
+    enabled: !!definitionKey && (!businessKey || (!!latest && instQuery.isSuccess)),
     staleTime: 5 * 60_000,
   })
   const timelineQuery = useTimeline(latest?.processInstanceId)
   const entries = timelineQuery.data ?? []
 
-  // 轨迹 → 图上高亮:已结束节点=已走;进行中(endEpochMs==null)=当前;实例 INCIDENT 时当前节点标异常。
   const highlights: BpmnHighlights | undefined = useMemo(() => {
     if (!businessKey || entries.length === 0) return undefined
     const completed = entries.filter((e) => e.endEpochMs != null).map((e) => e.activityId)
@@ -45,11 +48,14 @@ export default function ProcessTracePage() {
   const fmt = (v: number | null) => (v ? new Date(v).toLocaleString('zh-CN') : '—')
 
   let body: ReactNode
-  if ((businessKey && instQuery.isLoading) || xmlQuery.isLoading || (!!latest && timelineQuery.isLoading))
+  if (!definitionKey)
+    body = <EmptyState description="请在工作台选择流程定义后再看轨迹" />
+  else if ((businessKey && instQuery.isLoading) || xmlQuery.isLoading || (!!latest && timelineQuery.isLoading))
     body = <PageSkeleton rows={10} />
   else if (businessKey && instQuery.isError)
     body = <ErrorState message={errMsg(instQuery.error, '流程实例拉取失败')} onRetry={() => instQuery.refetch()} />
-  else if (noInstance) body = <EmptyState description={`未找到业务键 ${businessKey} 的流程实例`} />
+  else if (noInstance)
+    body = <EmptyState description={`本租户 ${tenantId} 下未找到业务键 ${businessKey} 的流程实例`} />
   else if (xmlQuery.isError)
     body = <ErrorState message={errMsg(xmlQuery.error, '流程定义 XML 拉取失败')} onRetry={() => xmlQuery.refetch()} />
   else if (timelineQuery.isError)
@@ -61,19 +67,36 @@ export default function ProcessTracePage() {
     <>
       <PageHeader
         title="流程轨迹"
+        extra={
+          definitionKey ? (
+            <Input.Search
+              allowClear
+              style={{ width: 280 }}
+              placeholder={`${businessKeyLabel(definitionKey)} 查询实例`}
+              defaultValue={businessKey}
+              onSearch={(v) => replaceFilters({ businessKey: v.trim() || undefined })}
+            />
+          ) : null
+        }
         description={
           <Space size={8} wrap>
-            <span>流程定义 {key}(只读)</span>
+            <span>
+              {definitionKey ? `流程 ${definitionLabel(definitionKey)}(只读)` : '未选择流程'} · 租户 {tenantId}
+            </span>
             {businessKey && (
               <>
-                <span>· 就诊 {businessKey}</span>
+                <span>
+                  · {businessKeyLabel(definitionKey)} {businessKey}
+                </span>
                 <PhaseTag phase={latest?.phase} loading={instQuery.isFetching} />
               </>
             )}
           </Space>
         }
       />
-      <Card size="small" styles={{ body: { padding: 0 } }}>{body}</Card>
+      <Card size="small" styles={{ body: { padding: 0 } }}>
+        {body}
+      </Card>
       {businessKey && !timelineQuery.isError && entries.length > 0 && (
         <Card size="small" title="办理轨迹" style={{ marginTop: 16 }}>
           <Timeline

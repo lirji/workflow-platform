@@ -1,7 +1,7 @@
 # Doc Map（由 /doc-sync 维护）
 
-lastSyncedCommit: a9bda5d
-lastSyncedAt: 2026-08-17
+lastSyncedCommit: e7c6585
+lastSyncedAt: 2026-09-06
 
 > 代码区域 ↔ 文档 映射 + 上次同步点。之后每次 `/doc-sync` 据 `lastSyncedCommit..HEAD` 的变更范围做**增量**同步。
 
@@ -13,6 +13,7 @@ lastSyncedAt: 2026-08-17
 | 全局(内部设计) | `docs/architecture.md` | 架构 | 模块职责、可靠消息与幂等、生命周期、数据模型、鉴权、可观测、运维 REST API |
 | `workflow-platform-protocol/**` | `docs/integration-guide.md`（§3/§8/附录 A）、`docs/architecture.md`（§2） | 契约 | 事件/DTO record、主题常量、JSON 样例;`ContractGoldenTest` 门禁 |
 | `workflow-platform-core/**` | `docs/architecture.md`（§4–§6）、`docs/integration-guide.md`（§5 骨架） | 架构 | 幂等发起、outbox/inbox、ACK 关联、`wf_*` 数据模型、试点 BPMN |
+| `workflow-platform-core/**/benefit-sku-golive*` + `SkuGoLiveActionOutboxDelegate` | `README.md`、`docs/architecture.md`（§10）、`docs/integration-guide.md`（内置流程契约）、`docs/onboarding-new-process.md` | 集成 | 权益 SKU 首次上线 BPMN、专用 action、独立 ACK message 与人工处置分支 |
 | `workflow-platform-sdk/**` | `docs/integration-guide.md`（§4.1） | API | `WorkflowClient` 门面、自动装配、Nexus 发布 |
 | `workflow-platform-server/web/**` | `docs/integration-guide.md`（§4.2 消费方接口）、`docs/architecture.md`（§9 运维 API） | API | REST 端点参考(tasks/process/definitions/admin/dlq) |
 | `workflow-platform-server/security/**` | `docs/integration-guide.md`（§4.3）、`docs/architecture.md`（§7） | 架构 | Casdoor JWT 分期鉴权、groups 归一化、ADMIN 门控 |
@@ -25,3 +26,7 @@ lastSyncedAt: 2026-08-17
 | 新流程接入 | `docs/onboarding-new-process.md` | 指南 | 以审方为模板的新流程接入配方 |
 | 架构决策 | `docs/adr/*.md` | ADR | Flowable 版本锁定与 schema 管理(0001) |
 | 实施计划(历史) | `docs/plans/**/{FINAL_PLAN,DECISION_RECORD}.md` | 计划 | frontend-plan 产出的特性计划与决策记录(只增不改) |
+
+## 同步记录
+
+- 2026-09-06：同步 `e7c6585` 的 `benefitSkuGoLive`、签名 requested/applied 回环和多流程待办；修正 onboarding、console README 与 ROADMAP 中“待办只支持审方”的过时描述。部署文档同时纳入当前 dev_infra PostgreSQL/Kafka 工作树改动。

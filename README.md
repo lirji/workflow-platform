@@ -3,7 +3,7 @@
 > 内部统一的**流程/审批中台**:以 Flowable(BPMN)承载流程编排,消费方业务系统通过 **SDK / Kafka 契约**接入,不感知引擎内部类型。
 > 架构模式 = **中台编排(Flowable)+ 消费方 outbox 发起 + 中台请求业务落实人工决定 + 消费方回执**(跨系统最终一致)。
 
-- **技术栈**:Java 21 · Spring Boot 3.3.5 · Flowable 7.1.0(BOM 统一)· PostgreSQL · Kafka · Redis · React 18 + Vite(前端)
+- **技术栈**:Java 21 · Spring Boot 3.3.5 · Flowable 7.1.0(BOM 统一)· PostgreSQL · Kafka · React 18 + Vite(前端)
 - **坐标**:`com.lrj.workflow:workflow-platform:0.1.0-SNAPSHOT`(多模块 Maven reactor)
 - **状态**:功能基线与第一批生产加固已落地；正式投产前仍需在目标环境完成多副本压测、故障演练、备份恢复与外部监控接入。详见 [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -81,7 +81,10 @@
 ### 5.1 本地开发(单机,可关鉴权直连联调)
 
 ```bash
-# 前置:PostgreSQL(库 workflow)、Kafka、Redis 可用;JAVA_HOME 指向 21
+# 前置：启动共享 dev_infra PostgreSQL/Kafka；本机应用默认连接 45432/49092
+../dev-infra/bin/dev-infra up postgres16 kafka38
+cp -n deploy/.env.example deploy/.env
+deploy/scripts/init-dev-infra-resources.sh
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 mvn -q -DskipTests install                      # 构建全 reactor,装本地仓库(供 sdk/protocol 复用)
 
@@ -107,7 +110,9 @@ cd workflow-console && pnpm install && cp .env.example .env.local && pnpm dev
 
 ```bash
 cd deploy && cp .env.example .env
-./compose.sh up -d --build                              # 自动加载 auth-platform 中央入口端口
+./scripts/init-dev-infra-resources.sh                    # 首次幂等创建 database/role/topics
+./scripts/compose-preflight.sh                          # 校验 dev_infra 与应用端口
+./compose.sh up -d --build                              # 仅构建/启动 server、admin、console
 curl -s localhost:8300/actuator/health                  # {"status":"UP"}
 ```
 

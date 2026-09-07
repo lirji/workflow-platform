@@ -1,0 +1,38 @@
+# 与 docker-compose.yml 叠加，为两个 Java 服务启用共享 OTel Agent。
+services:
+  server:
+    environment:
+      JAVA_TOOL_OPTIONS: ${WORKFLOW_JAVA_TOOL_OPTIONS:--javaagent:/otel/opentelemetry-javaagent.jar}
+      OTEL_SERVICE_NAME: workflow-platform-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://infra-otel-collector:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_PROPAGATORS: tracecontext,baggage
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=platforms,deployment.environment.name=local
+    volumes:
+      - otel-java-agent:/otel:ro
+
+  admin:
+    environment:
+      JAVA_TOOL_OPTIONS: ${WORKFLOW_JAVA_TOOL_OPTIONS:--javaagent:/otel/opentelemetry-javaagent.jar}
+      OTEL_SERVICE_NAME: workflow-platform-admin
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://infra-otel-collector:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_PROPAGATORS: tracecontext,baggage
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=platforms,deployment.environment.name=local
+    volumes:
+      - otel-java-agent:/otel:ro
+
+volumes:
+  otel-java-agent:
+    external: true
+    name: dev-infra-otel-java-agent

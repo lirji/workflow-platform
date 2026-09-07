@@ -14,6 +14,9 @@ import { NAV, NAV_GROUPS } from '../../nav'
 import { config } from '../../config'
 import { isAdmin, useAuthStore } from '../../store/authStore'
 import { colors } from '../../theme/colors'
+import { useWorkbenchStore } from '../../store/workbenchStore'
+import { mergeLocationSearch, processNavPath } from '../../workbench/useWorkbenchUrl'
+import WorkbenchBar from './WorkbenchBar'
 
 export default function AppLayout() {
   const location = useLocation()
@@ -25,10 +28,8 @@ export default function AppLayout() {
   const isMobile = !screens.lg
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  // /tasks/:id、/process/:key、/ops 归到对应菜单项(前缀匹配)。
-  const current = NAV.find((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))
+  const current = NAV.find((n) => location.pathname === n.path || location.pathname.startsWith(`${n.path}/`))
 
-  // adminOnly 项仅 ADMIN 可见(dev 无鉴权放行);过滤后剔除空分组,避免渲染空标题。
   const canSeeAdmin = !config.authEnabled || isAdmin(authorities)
   const visibleNav = NAV.filter((n) => !n.adminOnly || canSeeAdmin)
   const menuItems = NAV_GROUPS.map((g) => ({
@@ -38,13 +39,20 @@ export default function AppLayout() {
     children: visibleNav.filter((n) => n.group === g).map((n) => ({ key: n.path, icon: n.icon, label: n.label })),
   })).filter((grp) => grp.children.length > 0)
 
+  const go = (path: string) => {
+    const { definitionKey, businessKey, phase, opsTab } = useWorkbenchStore.getState()
+    const search = mergeLocationSearch(location.search, { definitionKey, businessKey, phase, opsTab })
+    const pathname = path === '/process' ? processNavPath(definitionKey) : path
+    navigate({ pathname, search })
+  }
+
   const menu = (afterClick?: () => void) => (
     <Menu
       mode="inline"
       selectedKeys={[current?.path ?? location.pathname]}
       items={menuItems}
       onClick={(e) => {
-        navigate(e.key)
+        go(e.key)
         afterClick?.()
       }}
       style={{ borderInlineEnd: 0 }}
@@ -75,6 +83,10 @@ export default function AppLayout() {
   ) : (
     <Tag color="orange">开发模式 · 未鉴权</Tag>
   )
+
+  const showWorkbench = location.pathname.startsWith('/tasks')
+    || location.pathname.startsWith('/process')
+    || location.pathname.startsWith('/ops')
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -108,6 +120,7 @@ export default function AppLayout() {
         </Layout.Header>
         <Layout.Content>
           <div className="app-content">
+            {showWorkbench && <WorkbenchBar />}
             <Outlet />
           </div>
         </Layout.Content>

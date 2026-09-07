@@ -4,18 +4,17 @@
 > 前置:workflow-platform 已 `mvn install`;his-platform his-outpatient 已用 **system mvn**(本地仓库 `/Users/liruijun/personal/repository`)编译过。
 
 ## 拓扑
-- 中台:workflow-server(:8300)+ 独立 PG(:25432)。复用 his 的 Kafka(:9092)。
-- his:his 基础设施(Nacos/PG/Redis/**Kafka 9092**)+ his-outpatient(:9004,`workflow-shadow` profile)。
+- 中台：workflow-server(:8300)，复用 dev_infra PostgreSQL(:45432) 与 Kafka(:49092)。
+- his：his 基础设施(Nacos/PG/Redis)+ his-outpatient(:9004,`workflow-shadow` profile)，workflow 事件连接 dev_infra Kafka。
 - 事件流:his `workflow.command.start` → 中台起影子流程;药师 legacy pass → his 经 SDK 镜像办理中台任务 → 中台 `workflow.action.requested` → his echo-ACK `workflow.action.applied` → 中台影子实例 COMPLETED。
 
 ## 步骤
 
-### 1) 起中台基础设施 + 服务
+### 1) 起共享基础设施 + 中台服务
 ```bash
-cd workflow-platform/deploy
-cp -n .env.example .env
-bash scripts/compose-preflight.sh && docker compose up -d      # PG 25432 / Redis 26379
-cd ..
+cd dev-infra
+./bin/dev-infra up postgres16 kafka38
+cd ../workflow-platform
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="/Users/liruijun/personal/devUtils/apache-maven-3.9.12/bin:$PATH"
 mvn -q install -DskipTests
@@ -26,7 +25,7 @@ mvn -pl workflow-platform-server spring-boot:run    # :8300,启动即部署 hisR
 ### 2) 起 his 基础设施 + his-outpatient(shadow)
 ```bash
 cd ../his-platform
-docker compose up -d        # Nacos 8848 / PG 5433 / Redis 6379 / Kafka 9092(与中台共享)
+docker compose up -d        # Nacos 8848 / PG 5433 / Redis 6379；workflow Kafka 另连 49092
 # his-outpatient 以 shadow profile 起(用 system mvn,确保能解析 /personal/repository 的 workflow 制品):
 mvn -pl his-outpatient spring-boot:run \
   -Dspring-boot.run.profiles=workflow-shadow
@@ -39,7 +38,7 @@ mvn -pl his-outpatient spring-boot:run \
 ```bash
 # 建就诊→开药品医嘱→提交(具体接口见 his README;提交会:legacy 送审 + 影子发起)
 # 提交后应能在中台看到影子实例:
-docker exec workflow-postgres psql -U workflow -d workflow -tAc \
+docker exec dev-infra-postgres16-1 psql -U workflow -d workflow -tAc \
   "SELECT business_key,phase FROM wf_process_link WHERE business_key='<encounterId>';"   # 期望 WAITING_USER
 ```
 
@@ -47,7 +46,7 @@ docker exec workflow-postgres psql -U workflow -d workflow -tAc \
 ```bash
 # 调 his 审方通过接口(PHARMACIST)。his 会:legacy 落地 + 经 SDK 镜像办理中台任务。
 # 稍候(outbox/关联),中台影子实例应 COMPLETED:
-docker exec workflow-postgres psql -U workflow -d workflow -tAc \
+docker exec dev-infra-postgres16-1 psql -U workflow -d workflow -tAc \
   "SELECT business_key,phase FROM wf_process_link WHERE business_key='<encounterId>';"   # 期望 COMPLETED
 ```
 
@@ -60,5 +59,5 @@ docker exec workflow-postgres psql -U workflow -d workflow -tAc \
 - his-outpatient 去掉 `workflow-shadow` profile(或 his.workflow.enabled=false)→ 立即回 legacy,零影响。中台影子数据不影响 his 业务。
 
 ## 已知注意
-- workflow-server 与 his-outpatient **共用 Kafka 9092**;两侧对 workflow.* 事件都用 String + ObjectMapper 显式序列化(不动 his 的 spring.json.trusted.packages)。
+- workflow-server 与 his-outpatient 的 workflow 集成都连接 **dev_infra Kafka 49092**；两侧对 workflow.* 事件都用 String + ObjectMapper 显式序列化（不动 his 的 spring.json.trusted.packages）。
 - Testcontainers 在本机不可用,集成校验一律走运行中的容器 + 冒烟(见 workflow-platform 与 his 的 deploy/*.sh)。

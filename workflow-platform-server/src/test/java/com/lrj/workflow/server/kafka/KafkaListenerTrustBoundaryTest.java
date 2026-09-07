@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,7 +45,7 @@ class KafkaListenerTrustBoundaryTest {
         ConsumerRecord<String, String> record = new ConsumerRecord<>(WorkflowTopics.COMMAND_START, 0, 0, "key", "json");
         doThrow(new IllegalArgumentException("untrusted")).when(trust).validate(envelope, "json", null);
         WorkflowStartListener listener = new WorkflowStartListener(codec, inbox,
-                mock(ProcessApplicationService.class), metrics, lifecycle, trust);
+                mock(ProcessApplicationService.class), metrics, lifecycle, trust, Optional.empty());
 
         assertThatThrownBy(() -> listener.onStart(record)).hasMessageContaining("untrusted");
         verify(inbox, never()).tryClaim(org.mockito.ArgumentMatchers.anyString(),

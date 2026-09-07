@@ -5,7 +5,7 @@ spring:
   application:
     name: workflow-platform-admin
   datasource:
-    url: ${WORKFLOW_DB_URL:jdbc:postgresql://localhost:25432/workflow}
+    url: ${WORKFLOW_DB_URL:jdbc:postgresql://127.0.0.1:45432/workflow}
     username: ${WORKFLOW_DB_USER:workflow}
     password: ${WORKFLOW_DB_PASSWORD:workflow}
     driver-class-name: org.postgresql.Driver

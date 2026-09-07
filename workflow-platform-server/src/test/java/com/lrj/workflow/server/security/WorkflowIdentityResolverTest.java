@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,6 +44,24 @@ class WorkflowIdentityResolverTest {
         assertThatThrownBy(() -> new WorkflowIdentityResolver(props).tenant("his"))
                 .isInstanceOf(WorkflowAccessDeniedException.class)
                 .hasMessageContaining("缺少租户");
+    }
+
+    @Test
+    void casdoorPropertiesTenantIsAuthoritativeAndOwnerIsIgnored() {
+        WorkflowSecurityProperties props = securedProperties();
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "none")
+                .subject("sub-1")
+                .claim("owner", "workflow")
+                .claim("properties", Map.of("tenant_id", "benefit-center"))
+                .issuedAt(Instant.now().minusSeconds(1)).expiresAt(Instant.now().plusSeconds(60))
+                .build();
+        authenticate(jwt, "ADMIN");
+
+        WorkflowIdentityResolver resolver = new WorkflowIdentityResolver(props);
+        assertThat(resolver.tenant("benefit-center")).isEqualTo("benefit-center");
+        assertThatThrownBy(() -> resolver.tenant("workflow"))
+                .isInstanceOf(WorkflowAccessDeniedException.class)
+                .hasMessageContaining("不一致");
     }
 
     private static WorkflowSecurityProperties securedProperties() {

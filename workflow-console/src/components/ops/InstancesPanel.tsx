@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Alert, App, Button, Descriptions, Form, Input, Modal, Select, Space, Table, Tag } from 'antd'
+import { Alert, App, Button, Descriptions, Dropdown, Form, Grid, Input, Modal, Select, Space, Table, Tag, Tooltip } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useNavigate } from 'react-router-dom'
 import { PhaseTag } from '../domain/PhaseTag'
+import { PhaseLegend } from '../domain/PhaseLegend'
 import { SuspendTag } from './SuspendTag'
 import { EmptyState, ErrorState, PageSkeleton } from '../common/AsyncState'
 import {
@@ -16,23 +17,38 @@ import {
 import { useBurstInvalidate } from '../../hooks/useTasks'
 import { errMsg, opErrorText } from '../../api/errors'
 import type { ProcessInstanceView } from '../../api/types'
+import { businessKeyLabel } from '../../workbench/definitionLabel'
+import { useWorkbenchStore } from '../../store/workbenchStore'
+import { useWorkbenchUrl } from '../../workbench/useWorkbenchUrl'
 
-const PHASES = ['WAITING_USER', 'WAITING_BUSINESS', 'COMPLETED', 'INCIDENT', 'CANCELLED']
+const PHASES = [
+  { value: 'WAITING_USER', label: '待办理' },
+  { value: 'WAITING_BUSINESS', label: '处理中' },
+  { value: 'COMPLETED', label: '已落地' },
+  { value: 'INCIDENT', label: '异常' },
+  { value: 'CANCELLED', label: '已取消' },
+]
 
-/** 实例运维:phase 筛选(含 INCIDENT 快捷)+ 挂起/恢复/终止(不可逆,reason 必填)+ 看轨迹。 */
+/** 实例运维:读工作台 context;终止必填原因;小屏禁用终止。 */
 export default function InstancesPanel() {
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
-  const [phase, setPhase] = useState<string | undefined>(undefined)
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.lg === false
+  const { filters, replaceFilters } = useWorkbenchUrl()
+  const tenantId = useWorkbenchStore((s) => s.tenantId)
+  const definitionKey = filters.definitionKey
+  const phase = filters.phase
   const [form] = Form.useForm<{ reason: string }>()
   const [terminateTarget, setTerminateTarget] = useState<ProcessInstanceView | null>(null)
 
-  const query = useInstances({ phase, limit: 100 })
+  const query = useInstances({ definitionKey, phase, limit: 100 })
   const burst = useBurstInvalidate([INSTANCES_KEY])
   const suspendMut = useSuspendInstance()
   const activateMut = useActivateInstance()
   const terminateMut = useTerminateInstance()
   const rows = useMemo(() => query.data ?? [], [query.data])
+  const keyLabel = businessKeyLabel(definitionKey)
 
   const confirmSuspendToggle = (row: ProcessInstanceView) => {
     const suspend = !row.suspended
@@ -70,7 +86,7 @@ export default function InstancesPanel() {
   }
 
   const columns: ColumnsType<ProcessInstanceView> = [
-    { title: '就诊(businessKey)', dataIndex: 'businessKey', render: (v: string) => <span className="mono">{v}</span> },
+    { title: `${keyLabel}(businessKey)`, dataIndex: 'businessKey', render: (v: string) => <span className="mono">{v}</span> },
     { title: '流程定义', dataIndex: 'processDefinitionKey' },
     {
       title: '阶段',
@@ -87,17 +103,24 @@ export default function InstancesPanel() {
       title: '操作',
       key: 'op',
       fixed: 'right',
-      width: 220,
+      width: 280,
       render: (_: unknown, r) => {
         const terminated = r.phase === 'CANCELLED' || r.phase === 'COMPLETED' || !r.running
         return (
           <Space size={4} wrap>
-            <Button type="link" size="small" disabled={terminated} onClick={() => confirmSuspendToggle(r)}>
-              {r.suspended ? '恢复' : '挂起'}
-            </Button>
-            <Button type="link" size="small" danger disabled={terminated} onClick={() => setTerminateTarget(r)}>
-              终止
-            </Button>
+            {r.phase === 'WAITING_USER' && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() =>
+                  navigate(
+                    `/tasks?definitionKey=${encodeURIComponent(r.processDefinitionKey)}&businessKey=${encodeURIComponent(r.businessKey)}`,
+                  )
+                }
+              >
+                打开待办
+              </Button>
+            )}
             <Button
               type="link"
               size="small"
@@ -105,6 +128,30 @@ export default function InstancesPanel() {
             >
               轨迹
             </Button>
+            <Button type="link" size="small" disabled={terminated} onClick={() => confirmSuspendToggle(r)}>
+              {r.suspended ? '恢复' : '挂起'}
+            </Button>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'terminate',
+                    label: isMobile ? '终止(请在桌面执行)' : '终止',
+                    danger: true,
+                    disabled: terminated || isMobile,
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'terminate' && !isMobile) setTerminateTarget(r)
+                },
+              }}
+            >
+              <Tooltip title={isMobile ? '请在桌面执行' : undefined}>
+                <Button type="text" size="small">
+                  更多
+                </Button>
+              </Tooltip>
+            </Dropdown>
           </Space>
         )
       },
@@ -115,7 +162,15 @@ export default function InstancesPanel() {
   if (query.isLoading) body = <PageSkeleton />
   else if (query.isError) body = <ErrorState message={errMsg(query.error)} onRetry={() => query.refetch()} />
   else if (rows.length === 0)
-    body = <EmptyState description={phase === 'INCIDENT' ? '当前无异常实例' : '暂无实例'} />
+    body = (
+      <EmptyState
+        description={
+          phase === 'INCIDENT'
+            ? '当前无异常实例'
+            : `当前租户 ${tenantId}${definitionKey ? ` / 流程 ${definitionKey}` : ''} 下暂无实例。`
+        }
+      />
+    )
   else body = <Table rowKey="processInstanceId" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 820 }} />
 
   return (
@@ -126,20 +181,21 @@ export default function InstancesPanel() {
           placeholder="阶段筛选(全部)"
           style={{ minWidth: 180 }}
           value={phase}
-          onChange={(v) => setPhase(v)}
-          options={PHASES.map((p) => ({ value: p, label: p === 'INCIDENT' ? '异常(INCIDENT)' : p }))}
+          onChange={(v) => replaceFilters({ phase: v })}
+          options={PHASES}
         />
-        <Button danger={phase !== 'INCIDENT'} onClick={() => setPhase('INCIDENT')}>
+        <Button danger={phase !== 'INCIDENT'} onClick={() => replaceFilters({ phase: 'INCIDENT' })}>
           只看异常
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => query.refetch()} loading={query.isFetching}>
           刷新
         </Button>
       </Space>
+      <PhaseLegend />
       {body}
 
       <Modal
-        title="终止实例"
+        title="终止实例（危险操作）"
         open={!!terminateTarget}
         okText="确认终止"
         okButtonProps={{ danger: true }}
@@ -156,11 +212,11 @@ export default function InstancesPanel() {
           type="warning"
           showIcon
           message="终止不可逆"
-          description="实例将被删除并标记为已取消(CANCELLED),未落地业务不会继续。"
+          description="实例将被删除并标记为已取消(CANCELLED),未落地业务不会继续。处理中(等业务 ACK)的实例不要终止。"
           style={{ marginBottom: 16 }}
         />
         <Descriptions column={1} size="small" style={{ marginBottom: 12 }}>
-          <Descriptions.Item label="就诊">
+          <Descriptions.Item label={keyLabel}>
             <span className="mono">{terminateTarget?.businessKey}</span>
           </Descriptions.Item>
           <Descriptions.Item label="实例">

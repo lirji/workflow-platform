@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithDataRouter } from '../test/renderWithDataRouter'
+import { setViewport } from '../test/viewport'
 import { blankTemplate } from '../components/bpmn/bpmnTemplates'
 import DesignerPage from './DesignerPage'
 import * as admin from '../api/admin'
@@ -28,20 +29,6 @@ vi.mock('../api/admin', () => ({
   listDefinitions: vi.fn().mockResolvedValue([]),
   deployDefinition: vi.fn(),
 }))
-
-const setViewport = (desktop: boolean) => {
-  window.matchMedia = ((q: string) =>
-    ({
-      matches: desktop,
-      media: q,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as unknown as MediaQueryList) as typeof window.matchMedia
-}
 
 beforeEach(() => {
   h.xml = ''

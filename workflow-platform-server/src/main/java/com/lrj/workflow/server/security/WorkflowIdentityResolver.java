@@ -10,6 +10,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.Map;
+
 /**
  * 有效身份解析:鉴权启用且携带 JWT 时,tenant/actor **从 JWT 派生并覆盖**明文头/请求体(可信真相);
  * 否则回退到明文头 / 请求体(dev/shadow 联调路径)。集中一处,便于 Controller 统一取用。
@@ -30,7 +32,7 @@ public class WorkflowIdentityResolver {
     public String tenant(String headerTenant) {
         Jwt jwt = currentJwt();
         if (jwt != null && StringUtils.hasText(props.getTenantClaim())) {
-            String t = jwt.getClaimAsString(props.getTenantClaim());
+            String t = tenantClaim(jwt, props.getTenantClaim());
             if (!StringUtils.hasText(t)) {
                 throw new WorkflowAccessDeniedException("访问令牌缺少租户声明");
             }
@@ -43,6 +45,31 @@ public class WorkflowIdentityResolver {
             throw new IllegalArgumentException("缺少 X-Workflow-Tenant，且访问令牌未提供租户声明");
         }
         return headerTenant;
+    }
+
+    /**
+     * Casdoor 会把管理员维护的业务租户放在 {@code properties.tenant_id}。
+     * 优先接受已归一到顶层的 claim，仅在同名 claim 缺失时读取 properties；
+     * {@code owner} 仍然只表示登录组织，不参与业务租户解析。
+     */
+    private static String tenantClaim(Jwt jwt, String claimName) {
+        String direct = normalized(jwt.getClaims().get(claimName));
+        if (direct != null) {
+            return direct;
+        }
+        Object properties = jwt.getClaims().get("properties");
+        if (!(properties instanceof Map<?, ?> values)) {
+            return null;
+        }
+        return normalized(values.get(claimName));
+    }
+
+    private static String normalized(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).strip();
+        return text.isEmpty() ? null : text;
     }
 
     /** 当前任务访问上下文；未启用安全时返回兼容 dev/shadow 的 bypass。 */

@@ -1,6 +1,6 @@
 # 新审批流程 onboarding 配方
 
-> 以「审方 hisRxReview」为模板,端到端接一个新审批场景(示例:退费审批 hisRefundReview)。
+> 以已落地的「审方 `hisRxReview`」和「权益 SKU 上线 `benefitSkuGoLive`」为模板，端到端接一个新审批场景（示例：退费审批 `hisRefundReview`）。
 > 中台侧成本很低(部署一个 BPMN);主要工作量在消费方(另一个 repo)的 outbox 发起 + 落地消费。
 
 ## 中台侧(本仓库,约半天)
@@ -14,7 +14,7 @@
    - `POST /api/v1/admin/definitions/deploy` `{name, bpmnXml}`(ADMIN);
    - 打包进 classpath 由 admin 服务部署(纳入版本管理)。
 3. **(可选)自定义落地动作**:若新流程要写 outbox 发 `action.requested`,加 serviceTask + delegate,参照
-   `RxReviewActionOutboxDelegate`;或复用同一 outbox 模式。纯人工审批(无异步落地)则无需。
+   `RxReviewActionOutboxDelegate`；需要独立 action/message 的场景参照 `SkuGoLiveActionOutboxDelegate`。同时必须在 `MessageCorrelationService.ackMessageName` 登记该流程自己的 ACK message，不能复用其它流程订阅。纯人工审批（无异步落地）则无需。
 
 ## 消费方侧(消费方 repo,约 1~2 天)
 
@@ -26,15 +26,17 @@
 ## 前端(workflow-console)
 
 - **轨迹页**天然参数化:`/process/{definitionKey}?businessKey=`,新流程零改动即可看图/轨迹。
-- **待办中心当前硬编码** `hisRxReview`(`TasksPage.tsx` 的 `DEFINITION_KEY`)。多流程需一个小增强:加「流程定义」下拉筛选(或按登录用户候选组聚合多流程待办)。列为 backlog(小改)。
-- 办理抽屉 `ReviewDrawer` 目前面向审方 PASS/REJECT;若新流程决定项不同,需按 action 类型泛化(小改)。
+- 待办中心已通过 query 参数支持两个内置流程：`/tasks` 默认 `hisRxReview`，`/tasks?definitionKey=benefitSkuGoLive&businessKey=<skuId>` 展示 SKU 审批。候选组、可见 task key 和文案集中在 `src/pages/taskInbox.ts`。
+- 新增第三种流程时，需要在 `taskInbox.ts` 增加 definition→候选组/task key/文案映射；当前还没有任意定义下拉或服务端聚合多流程待办。
+- 办理抽屉 `ReviewDrawer` 支持通用 PASS/REJECT；若新流程决定项不是二选一，需同步扩协议、服务端办理语义与前端表单，不能只改文案。
 
 ## Checklist
 - [ ] BPMN(候选组大写、含 DI)+ action 类型约定
 - [ ] 部署(运维面板/REST/classpath)
 - [ ] (可选)outbox delegate
+- [ ] 使用独立 ACK message，并在 `MessageCorrelationService` 登记 definition→message 映射
 - [ ] 消费方:发起 outbox + 落地消费 + 回执(幂等/租户)
-- [ ] 前端:待办中心 definitionKey 支持(如需多流程)
+- [ ] 前端:`taskInbox.ts` 增加 definitionKey/候选组/task key/文案映射
 - [ ] 冒烟:发起→待办→办理→202→落地→轨迹全绿
 
 ## 成本与复用

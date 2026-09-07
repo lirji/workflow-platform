@@ -1,19 +1,21 @@
 import { Alert, Button, Space, Typography } from 'antd'
 import type { RecentReview } from '../../store/uiStore'
-import { useProcessPhase } from '../../hooks/useProcess'
+import { newestProcessInstance, useProcessPhase } from '../../hooks/useProcess'
 import { PhaseTag } from './PhaseTag'
+import { businessKeyLabel } from '../../workbench/definitionLabel'
 
-/** 单条近期办理:轮询该 businessKey 的实例阶段,诚实展示 处理中 → 已落地 / 异常。 */
-function Row({ item, definitionKey, businessKeyLabel }: { item: RecentReview; definitionKey: string; businessKeyLabel: string }) {
-  const q = useProcessPhase(definitionKey, item.businessKey)
-  const list = q.data
-  const latest = list && list[list.length - 1]
+/** 单条近期办理:按该条自己的 processDefinitionKey 查阶段。 */
+function Row({ item }: { item: RecentReview }) {
+  const q = useProcessPhase(item.processDefinitionKey, item.businessKey)
+  const latest = newestProcessInstance(q.data)
+  const label = businessKeyLabel(item.processDefinitionKey)
+  const decisionText = item.decision === 'PASS' || item.decision === 'APPROVE' ? '通过' : item.decision === 'REJECT' ? '驳回' : item.decision
   return (
     <Space wrap size={8}>
       <Typography.Text>
-        {businessKeyLabel} <span className="mono">{item.businessKey}</span>
+        {label} <span className="mono">{item.businessKey}</span>
       </Typography.Text>
-      <Typography.Text type="secondary">{item.decision === 'PASS' ? '通过' : '驳回'}</Typography.Text>
+      <Typography.Text type="secondary">{decisionText}</Typography.Text>
       <PhaseTag phase={latest?.phase} loading={q.isFetching} />
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         actionId {item.actionId.slice(0, 8)}…
@@ -25,13 +27,9 @@ function Row({ item, definitionKey, businessKeyLabel }: { item: RecentReview; de
 /** 近期办理区:办理返回 202 后展示,追最终一致落地状态。不显示"已完成"。 */
 export default function RecentReviews({
   items,
-  definitionKey,
-  businessKeyLabel = '就诊',
   onClear,
 }: {
   items: RecentReview[]
-  definitionKey: string
-  businessKeyLabel?: string
   onClear: () => void
 }) {
   return (
@@ -43,7 +41,7 @@ export default function RecentReviews({
       description={
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           {items.map((it) => (
-            <Row key={it.actionId} item={it} definitionKey={definitionKey} businessKeyLabel={businessKeyLabel} />
+            <Row key={it.actionId} item={it} />
           ))}
         </Space>
       }

@@ -1,6 +1,6 @@
 # workflow-console
 
-流程/审批中台管控台。本轮两页:**待办中心**(审方待办查看 + 办理)与**流程轨迹**(bpmn-js 只读渲染)。
+流程/审批中台管控台。覆盖**待办中心**（审方与权益 SKU 上线审批）、**流程轨迹**（bpmn-js 只读渲染）、运维面板与流程设计器。
 技术栈克隆自 `auth-console`(React18 + Vite5 + TS + antd5 + react-query + zustand + oidc-client-ts,pnpm)。
 
 后端:`workflow-platform-server`(REST :8300)。
@@ -19,9 +19,10 @@ pnpm dev                       # http://localhost:5373
 ```
 
 `vite.config.ts` 把 `/api` 同源反代到 `VITE_API_TARGET`(默认 `http://localhost:8300`),免 CORS。
-需要中台 server 在 :8300 运行,并有 tenant=`his` 的审方待办(businessKey 即就诊/encounter)。
+需要中台 server 在 :8300 运行。审方使用 tenant=`his`，权益 SKU 流程使用 `WORKFLOW_BENEFIT_TENANT`（默认 `dev-tenant`）；`VITE_WORKFLOW_TENANT` 必须与当前入口的流程租户一致。
 
-- 待办中心:`/tasks`
+- 审方待办:`/tasks`（默认 `definitionKey=hisRxReview`）
+- 权益 SKU 待办:`/tasks?definitionKey=benefitSkuGoLive&businessKey=<skuId>`
 - 流程轨迹:`/process/hisRxReview`(叠加实例轨迹高亮:`/process/hisRxReview?businessKey=<就诊号>`)
 - 运维面板:`/ops`(ADMIN;实例运维 / 死信作业 / DLQ / 流程定义)
 - 流程设计器:`/designer`(ADMIN;可视化拖拽建模 + 部署,`/designer?key=<定义key>` 编辑既有定义最新版)
@@ -68,12 +69,13 @@ pnpm dev                       # http://localhost:5373
 
 ### Casdoor 组 ↔ BPMN candidateGroups 映射
 
-BPMN 里候选组是**大写、无前缀**的 `PHARMACIST` / `ADMIN`。Casdoor token 的 `groups` 经
+BPMN 里候选组是**大写、无前缀**的 `PHARMACIST` / `BENEFIT_SKU_REVIEWER` / `ADMIN`。Casdoor token 的 `groups` 经
 `normalizeGroup()` 归一化（只取路径末段并大写）后精确匹配：
 
 | Casdoor 组(示例) | 归一化 | 含义 |
 |---|---|---|
 | `PHARMACIST` / `org/PHARMACIST` | `PHARMACIST` | 药师(可读+办理审方) |
+| `BENEFIT_SKU_REVIEWER` / `org/BENEFIT_SKU_REVIEWER` | `BENEFIT_SKU_REVIEWER` | 权益 SKU 上线审批人 |
 | `ADMIN` / `org/ADMIN` | `ADMIN` | 管理员 |
 | `his_PHARMACIST` / `his_ADMIN` | 保持原值 | 不授权；避免租户前缀导致权限提升 |
 
@@ -108,5 +110,5 @@ docker build -t workflow-console .   # nginx 静态托管,监听 8302,/api 反�
 
 ## 本轮 Non-goals
 
-认领/转办、退费审批、跨服务患者明细、深色模式、移动端建模。
+退费审批、跨服务患者明细、任意流程聚合待办/下拉选择、深色模式、移动端建模。
 BPMN 建模器/部署已交付(`/designer`,见上)。设计器本轮不做:完整表单设计器、多实例/会签、`.bpmn` 文件导入导出、Camunda/Zeebe 属性 provider、从 console 发起/驱动实例(归消费方+服务端)。

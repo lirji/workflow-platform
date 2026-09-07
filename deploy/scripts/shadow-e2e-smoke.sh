@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 审方 shadow 端到端冒烟(需已按 shadow-e2e-runbook.md 起好:中台 server:8300 + his-outpatient:9004[workflow-shadow]
-# + workflow PG:25432 + his PG:5433 + 临时 Kafka:9095)。seed 一条就诊+药品医嘱(绕开 registration),
+# + dev_infra PostgreSQL:45432/Kafka:49092 + his PG:5433)。seed 一条就诊+药品医嘱(绕开 registration),
 # 提交→影子 WAITING_USER,审方通过→影子 COMPLETED,并对账 legacy 权威 + 计费幂等未破坏。
 set -uo pipefail
 EID="${1:-90001}"
 PASS=0; FAIL=0
 ok(){ echo "  PASS: $1"; PASS=$((PASS+1)); }
 no(){ echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
-wfpg(){ docker exec workflow-postgres psql -U workflow -d workflow -tAc "$1"; }
+wfpg(){ docker exec dev-infra-postgres16-1 psql -U workflow -d workflow -tAc "$1"; }
 hispg(){ docker exec his-postgres psql -U his -d his_outpatient -tAc "$1"; }
 
 echo "==> seed 就诊(OPEN)+ 药品医嘱(DRUG,CREATED)"

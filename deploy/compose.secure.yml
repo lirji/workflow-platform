@@ -1,0 +1,22 @@
+# Casdoor OIDC 本机叠加层。不改 application.yml 与 Helm 默认值。
+# 用法：bash deploy/compose.sh --secure up -d --build
+
+services:
+  server:
+    environment:
+      WORKFLOW_SECURITY_ENABLED: "true"
+      # token.iss 是 localhost:8000；容器通过 host.docker.internal 读取 JWKS。
+      WORKFLOW_OIDC_ISSUER: http://localhost:8000
+      WORKFLOW_OIDC_JWKS: http://host.docker.internal:8000/.well-known/jwks
+      WORKFLOW_OIDC_AUDIENCE: workflow-console-app-001
+      WORKFLOW_TENANT_CLAIM: tenant_id
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  console:
+    build:
+      args:
+        VITE_AUTH_ENABLED: "true"
+        VITE_CASDOOR_AUTHORITY: http://localhost:8000
+        VITE_CASDOOR_CLIENT_ID: workflow-console-app-001
+        VITE_OIDC_SCOPE: openid profile offline_access

@@ -67,4 +67,25 @@ public class DefinitionController {
             throw new IllegalStateException("读取流程定义 XML 失败: " + key, e);
         }
     }
+
+    /**
+     * 返回当前 tenant 是否已部署指定定义。控制台先查本接口，再查待办，即可区分“定义缺失”和
+     * “定义存在但当前没有任务”，无需把空列表一律解释成没有业务。
+     */
+    @GetMapping("/{key}/availability")
+    public DefinitionAvailabilityView availability(
+            @RequestHeader(value = "X-Workflow-Tenant", required = false) String tenant,
+            @PathVariable String key) {
+        String effectiveTenant = identity.tenant(tenant);
+        boolean deployed = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionKey(key)
+                .processDefinitionTenantId(effectiveTenant)
+                .count() > 0;
+        return new DefinitionAvailabilityView(effectiveTenant, key, deployed,
+                deployed ? "DEPLOYED" : "DEFINITION_MISSING");
+    }
+
+    /** 流程定义可用性只读视图。 */
+    public record DefinitionAvailabilityView(
+            String tenantId, String definitionKey, boolean deployed, String status) { }
 }

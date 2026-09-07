@@ -11,7 +11,7 @@ interface Props {
   task: TaskView | null
   onClose: () => void
   /** 办理成功(已受理 202)回调:上报 businessKey/actionId/decision 供近期办理区追踪落地。 */
-  onSubmitted: (r: { businessKey: string; actionId: string; decision: ReviewDecision }) => void
+  onSubmitted: (r: { businessKey: string; actionId: string; decision: ReviewDecision; processDefinitionKey: string }) => void
   /** 触发列表爆发轮询。 */
   onSyncStart: () => void
 }
@@ -68,7 +68,12 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
         },
       })
       message.info(`已受理,待业务落地(actionId ${res.actionId.slice(0, 8)}…)`)
-      onSubmitted({ businessKey: task.businessKey, actionId: res.actionId, decision: v.decision })
+      onSubmitted({
+        businessKey: task.businessKey,
+        actionId: res.actionId,
+        decision: v.decision,
+        processDefinitionKey: task.processDefinitionKey,
+      })
       onSyncStart()
       onClose()
     } catch (e) {
@@ -89,7 +94,7 @@ export default function ReviewDrawer({ open, task, onClose, onSubmitted, onSyncS
       footer={
         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button onClick={onClose}>取消</Button>
-          <Button type="primary" loading={mutation.isPending} onClick={submit}>
+          <Button type="primary" loading={mutation.isPending} onClick={submit} style={{ minHeight: 44 }}>
             提交
           </Button>
         </Space>

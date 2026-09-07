@@ -8,7 +8,6 @@ import CallbackPage from '../pages/CallbackPage'
 import LoginPage from '../pages/LoginPage'
 import TasksPage from '../pages/TasksPage'
 
-// 懒加载:轨迹页 bpmn chunk / 运维面板 admin chunk 不进待办首屏。
 const ProcessTracePage = lazy(() => import('../pages/ProcessTracePage'))
 const OpsPage = lazy(() => import('../pages/OpsPage'))
 const DesignerPage = lazy(() => import('../pages/DesignerPage'))
@@ -19,10 +18,9 @@ const lazyFallback = (
   </div>
 )
 
-// 数据式路由表。/callback 公开;其余在 ProtectedRoute(Stage 2 未登录跳 Casdoor)+ AppLayout 下。
+// 数据式路由表。/callback 公开;其余在 ProtectedRoute + AppLayout 下。
 export const router = createBrowserRouter([
   { path: '/callback', element: <CallbackPage /> },
-  // 公开品牌登录页(ProtectedRoute 外,避免死循环);dev 免登录亦从此进。
   { path: '/login', element: <LoginPage /> },
   {
     path: '/',
@@ -35,6 +33,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/tasks" replace /> },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'tasks/:taskId', element: <TasksPage /> },
+      { path: 'process', element: <Suspense fallback={lazyFallback}><ProcessTracePage /></Suspense> },
       { path: 'process/:key', element: <Suspense fallback={lazyFallback}><ProcessTracePage /></Suspense> },
       { path: 'ops', element: <AdminRoute><Suspense fallback={lazyFallback}><OpsPage /></Suspense></AdminRoute> },
       { path: 'designer', element: <AdminRoute><Suspense fallback={lazyFallback}><DesignerPage /></Suspense></AdminRoute> },

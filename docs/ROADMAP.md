@@ -1,7 +1,7 @@
 # workflow-platform 生产化路线图
 
 > 现状评估 + 分期执行线路。目标:从"审方试点 shadow 跑通"演进到"企业级生产可用的通用审批中台"。
-> 评估基于代码实况(截至 2026-08-15,commit `90ba313`)。
+> 初始缺口评估形成于 2026-08-15；完成状态已按 2026-09-06 代码更新。当前已落地 `hisRxReview` 与 `benefitSkuGoLive` 两条业务闭环，正式投产仍受目标环境压测、灾备和外部监控门禁约束。
 
 ## 1. 现状盘点(已实现骨架)
 
@@ -11,10 +11,12 @@
 - 流程生命周期:`ProcessLink` + `ProcessPhase`(WAITING_USER/WAITING_BUSINESS/COMPLETED/INCIDENT/CANCELLED)
 - REST + SDK:待办查询/办理/实例/轨迹/定义 XML;`BpmnAutoDeployer` 启动自动部署
 - 多租户管道:tenant 贯穿；dev 来源为明文头，生产由 JWT tenant claim 决定并校验资源归属
-- 一个流程:审方 `hisRxReview`;前端 workflow-console(待办中心 + 轨迹)
-- 测试:协议 golden / Flowable spike / BPMN 模型 / 审方回环集成 / Controller Web
+- 两个内置流程：审方 `hisRxReview` 与权益 SKU 首次上线 `benefitSkuGoLive`；前端待办中心通过 `definitionKey` 深链支持两者，轨迹页保持参数化
+- 测试:协议 golden / Flowable spike / 两条 BPMN 模型与回环集成 / Controller Web / 前端多流程待办
 
-## 2. 缺口评估(按优先级)
+## 2. 初始缺口评估（2026-08-15 快照）
+
+下表保留当时问题定义；P0 已由阶段一全部关闭，P1/P2 的当前状态以 §4 各阶段勾选项为准，不能再把本节“现状”列当作当前代码事实。
 
 ### P0 — 上生产前必须补
 | 缺口 | 现状 | 影响 |
@@ -74,8 +76,10 @@
 - 2.3 HA:outbox 多副本压测、Flowable 异步执行器调优、多副本部署验证
 - 2.4 契约治理:跨仓库契约 CI 测试(golden 共享)
 
-### 阶段三 · 多流程扩展(业务验证)—— 平台侧就绪 ✅
-- 3.1/3.2 ✅(平台侧):onboarding 配方 `docs/onboarding-new-process.md`(以审方为模板,含中台/消费方/前端步骤 + checklist + 成本);中台侧新流程 = 部署一个 BPMN(运维面板/REST/classpath),可靠消息/幂等/鉴权/指标/审计/运维/DLQ 全复用。**live 新场景**(退费/权限授予的真实端到端)需消费方 repo 的发起+落地适配 + 前端待办中心 definitionKey 参数化(backlog 小改)——落在消费方仓库,不在本仓库。
+### 阶段三 · 多流程扩展(业务验证)—— 两条流程已落地 ✅
+- 3.1 ✅：onboarding 配方 `docs/onboarding-new-process.md` 已覆盖 BPMN、消费方 inbox/outbox、独立 ACK message 和前端映射。
+- 3.2 ✅：`benefitSkuGoLive` 已作为第二条真实流程落地，包含 `BENEFIT_SKU_REVIEWER` 待办、专用 action delegate、业务 ACK 与失败人工处置；前端通过 `/tasks?definitionKey=benefitSkuGoLive` 接入。
+- 新增第三种流程仍需消费方发起/落地适配，并在 `workflow-console/src/pages/taskInbox.ts` 增加 definition→候选组/task key/文案映射；任意定义聚合待办或下拉选择仍是后续增强。
 
 ### 阶段四 · 流程能力增强(P2)—— 基本完成
 - 4.1 任务操作 ✅(认领/转办/委派/撤回):core + REST `/tasks/{id}/{claim,reassign,delegate,unclaim}` + SDK + 审计。**加签/会签**需 multi-instance BPMN(审方无 MI),留待带 MI 流程模板。

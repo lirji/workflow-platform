@@ -39,7 +39,7 @@ sequenceDiagram
 | 模块 | 职责 | 关键类 / 资源(相对各模块 `src/main`) |
 |---|---|---|
 | **protocol** | Published Language:对外事件契约 record + REST DTO + 主题常量。无业务逻辑,可独立编译。`ProtocolInfo.CONTRACT_VERSION=1` | `event/EventEnvelopeV1`、`StartProcessCommandV1`、`WorkflowActionRequestedV1`、`WorkflowActionAppliedV1`、`WorkflowActionStatus`、`Actor`、`WorkflowTopics`、`WorkflowLifecycleV1`;`api/TaskView`、`TaskSearchResult`、`CompleteReviewRequest`、`ProcessInstanceView`、`TimelineEntry` |
-| **core** | 领域/应用服务 + 数据访问 + Flyway 迁移 + 试点 BPMN。直接用 Flowable `RuntimeService`/`TaskService`(不抽象引擎,ADR 决策) | `process/ProcessApplicationService`、`process/ProcessQueryService`、`task/TaskApplicationService`、`correlation/MessageCorrelationService`、`outbox/OutboxEventRepository`、`inbox/InboxEventRepository`、`dlq/DlqEventRepository`、`link/ProcessLink(Repository)`+`ProcessPhaseTransitionService`、`delegate/RxReviewActionOutboxDelegate`、`db/migration/V1__…V5__…`、`bpmn/his-rx-review-v1.bpmn20.xml` |
+| **core** | 领域/应用服务 + 数据访问 + Flyway 迁移 + 试点 BPMN。直接用 Flowable `RuntimeService`/`TaskService`(不抽象引擎,ADR 决策) | `process/ProcessApplicationService`、`process/ProcessQueryService`、`task/TaskApplicationService`、`correlation/MessageCorrelationService`、`outbox/OutboxEventRepository`、`inbox/InboxEventRepository`、`dlq/DlqEventRepository`、`link/ProcessLink(Repository)`+`ProcessPhaseTransitionService`、`delegate/{RxReviewActionOutboxDelegate,SkuGoLiveActionOutboxDelegate}`、`db/migration/V1__…V5__…`、`bpmn/{his-rx-review-v1,benefit-sku-golive-v1}.bpmn20.xml` |
 | **sdk** | 消费方接入门面(Spring Boot Starter)。默认 `workflow.client.enabled=false` → 注入 `NoopWorkflowClient`(引入即安全) | `WorkflowClient`、`RemoteWorkflowClient`、`NoopWorkflowClient`、`WorkflowClientProperties`、`WorkflowSdkAutoConfiguration` |
 | **server(:8300)** | **运行时服务**:Flowable 引擎(async executor 开)+ REST + Kafka 监听 + outbox 投递 + 安全 + 指标/审计 | `web/*Controller`、`kafka/WorkflowStartListener`+`WorkflowActionAppliedListener`+`WorkflowDlqListener`+`EnvelopeCodec`+`KafkaErrorConfig`、`outbox/OutboxPublisher`、`correlation/CorrelationRetryJob`、`dlq/DlqReplayService`、`security/*`、`metrics/WorkflowMetrics`、`audit/WorkflowAudit`、`admin/*Service+*View`、`BpmnAutoDeployer`、`config/FlowableTuningConfig` |
 | **admin(:8301)** | 定义/租户管理服务;`async-executor-activate=false`(不跑运行时作业),与 server 同库。扫 `com.lrj.workflow` 复用 core | `WorkflowPlatformAdminApplication` |
@@ -55,7 +55,7 @@ sequenceDiagram
 
 两者连**同一 PostgreSQL**(`ACT_*` + `wf_*`)与同一 Kafka broker。server 无状态,可多副本水平扩展(正确性机制见 §4、[`deploy/README.md`](../deploy/README.md) HA 章)。
 
-BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenant=`his`,`enableDuplicateFiltering` 去重,`workflow.pilot.auto-deploy=false` 可关);运行时新定义经 `/api/v1/admin/definitions/deploy` 部署。
+BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署 `hisRxReview`(tenant=`his`)与 `benefitSkuGoLive`(tenant=`workflow.pilot.benefit-tenant`，默认 `dev-tenant`)；通过 HMAC 与 `source=tenant` 绑定校验的 `benefitSkuGoLive` start 还会在起实例前按其入站 tenant 幂等补部署。两条路径均以 `enableDuplicateFiltering` 去重；`workflow.pilot.auto-deploy=false` 可整体关闭。运行时新定义经 `/api/v1/admin/definitions/deploy` 部署。
 
 ## 4. 可靠消息与幂等(正确性核心)
 
@@ -86,7 +86,7 @@ BPMN 部署:server 启动经 `BpmnAutoDeployer` 部署试点 `hisRxReview`(tenan
 
 ### 4.4 ACK 关联(落地回执推进流程)
 
-`MessageCorrelationService.correlate(applied)` 依次校验:实例仍在运行 → 流程变量 `actionId` 与回执匹配 → message 订阅(`hisRxReviewApplied`)就绪,再 `messageEventReceived` 推进,并按结果更新 `phase`。结果枚举 `Outcome`:
+`MessageCorrelationService.correlate(applied)` 依次校验:实例仍在运行 → 流程变量 `actionId` 与回执匹配 → 按流程定义选择 message 订阅（`hisRxReviewApplied` 或 `benefitSkuGoLiveApplied`）并确认就绪，再 `messageEventReceived` 推进并按结果更新 `phase`。未登记 ACK message 的流程会返回 `ACTION_MISMATCH`，不能误投到另一个业务订阅。结果枚举 `Outcome`:
 
 | Outcome | 含义 | 处理 |
 |---|---|---|
@@ -181,12 +181,21 @@ Kafka 是独立入口：`EnvelopeCodec` 在 inbox 前校验 v1 版本、topic �
 
 > `/deploy` 是前端「粘贴 XML 部署」与可视化设计器 `/designer` 的共用后端(零后端改动即支撑设计器)。
 
-## 10. 试点流程:`hisRxReview`(审方)
+## 10. 内置流程
+
+### `hisRxReview`（审方）
 
 - 定义:`core/src/main/resources/bpmn/his-rx-review-v1.bpmn20.xml`(tenant=`his`),server 启动自动部署。
 - 人工任务候选组 `PHARMACIST`;网关按流程变量 `decision`(`PASS`/`REJECT`)分支。
 - 请求落地经 `RxReviewActionOutboxDelegate`(core)写 outbox(`action.requested.v1`);业务 ACK 经 message `hisRxReviewApplied` 关联推进。
 - **设计器边界**:可视化设计器是"可视化编辑+部署工具",产物无法从 console 独立跑实例——发起归消费方 Kafka,完成走审方端点,condition 仅 `decision` 变量可用。详见 [ROADMAP §4.4](ROADMAP.md) 与 `docs/plans/bpmn-designer-0815-2120/`。
+
+### `benefitSkuGoLive`（权益 SKU 首次上线）
+
+- 定义：`core/src/main/resources/bpmn/benefit-sku-golive-v1.bpmn20.xml`。启动默认 tenant 由 `WORKFLOW_BENEFIT_TENANT` 指定（默认 `dev-tenant`）；可信 start 可按事件 `tenantId` 为其他 tenant 幂等准备定义，不要求修改该默认值。
+- 人工任务为 `skuGoLiveReview`，候选组 `BENEFIT_SKU_REVIEWER`；PASS/REJECT 分别映射成 `SKU_GO_LIVE_APPROVE` / `SKU_GO_LIVE_REJECT`。
+- `SkuGoLiveActionOutboxDelegate` 只在 Flowable 事务内写 `workflow.action.requested.v1`，不直接调用权益中台。业务回执使用独立 message `benefitSkuGoLiveApplied`；只有 `APPLIED` 进入正常终点，其余状态进入 ADMIN 人工处置任务。
+- 前端待办入口为 `/tasks?definitionKey=benefitSkuGoLive&businessKey=<skuId>`；未带 definitionKey 时仍默认展示审方待办，避免改变既有深链。
 
 ## 11. 相关文档
 

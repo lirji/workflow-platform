@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { completeReview, findTasks, type FindTasksParams } from '../api/tasks'
-import type { CompleteReviewRequest } from '../api/types'
+import { claimTask, completeReview, completeTask, findTasks, reassignTask, unclaimTask, type FindTasksParams } from '../api/tasks'
+import type { CompleteReviewRequest, CompleteTaskRequest } from '../api/types'
 
 export const TASKS_KEY = 'tasks'
 
@@ -19,6 +19,46 @@ export function useCompleteReview() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ taskId, body }: { taskId: string; body: CompleteReviewRequest }) => completeReview(taskId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
+    },
+  })
+}
+
+export function useCompleteTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, body }: { taskId: string; body: CompleteTaskRequest }) => completeTask(taskId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
+    },
+  })
+}
+
+export function useClaimTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, userId }: { taskId: string; userId: string }) => claimTask(taskId, userId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
+    },
+  })
+}
+
+export function useReassignTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, assignee }: { taskId: string; assignee: string }) => reassignTask(taskId, assignee),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
+    },
+  })
+}
+
+export function useUnclaimTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (taskId: string) => unclaimTask(taskId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [TASKS_KEY] })
     },

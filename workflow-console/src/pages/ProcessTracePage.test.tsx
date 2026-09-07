@@ -66,6 +66,6 @@ describe('ProcessTracePage correctness states', () => {
     expect(await screen.findByText('timeline failed')).toBeInTheDocument()
     expect(getDefinitionXml).toHaveBeenCalledWith('hisRxReview', 'pi-1')
     expect(screen.queryByText('办理轨迹')).not.toBeInTheDocument()
-    expect(screen.queryByText('审方')).not.toBeInTheDocument()
+    expect(screen.queryByText('alice')).not.toBeInTheDocument()
   })
 })

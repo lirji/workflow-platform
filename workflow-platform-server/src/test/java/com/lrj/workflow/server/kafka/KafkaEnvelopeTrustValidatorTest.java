@@ -53,6 +53,27 @@ class KafkaEnvelopeTrustValidatorTest {
     }
 
     @Test
+    void benefitSourceMustBeExplicitlyBoundToTheInboundBusinessTenant() {
+        KafkaTrustProperties stale = trustedProperties("benefit-center=benefit-center");
+        KafkaEnvelopeTrustValidator staleValidator = new KafkaEnvelopeTrustValidator(stale);
+        assertThatCode(staleValidator::afterPropertiesSet).doesNotThrowAnyException();
+        RecordHeader signature = new RecordHeader(KafkaEnvelopeTrustValidator.SIGNATURE_HEADER, sign("json"));
+
+        assertThatThrownBy(() -> staleValidator.validate(
+                envelope("benefit-center", "dev-tenant"), "json", signature))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("source=benefit-center")
+                .hasMessageContaining("tenant=dev-tenant");
+
+        KafkaEnvelopeTrustValidator alignedValidator = new KafkaEnvelopeTrustValidator(
+                trustedProperties("benefit-center=dev-tenant"));
+        assertThatCode(alignedValidator::afterPropertiesSet).doesNotThrowAnyException();
+        assertThatCode(() -> alignedValidator.validate(
+                envelope("benefit-center", "dev-tenant"), "json", signature))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void enabledRejectsMissingOrMalformedBindingsAtStartup() {
         KafkaTrustProperties properties = new KafkaTrustProperties();
         properties.setEnabled(true);
@@ -63,6 +84,15 @@ class KafkaEnvelopeTrustValidatorTest {
 
         properties.setSourceTenantBindings("his-outpatient");
         assertThatThrownBy(validator::afterPropertiesSet).isInstanceOf(IllegalStateException.class);
+    }
+
+    private static KafkaTrustProperties trustedProperties(String binding) {
+        KafkaTrustProperties properties = new KafkaTrustProperties();
+        properties.setEnabled(true);
+        properties.setSourceTenantBindings(binding);
+        properties.setSourceSigningKeys("benefit-center="
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(KEY));
+        return properties;
     }
 
     private static byte[] sign(String value) {

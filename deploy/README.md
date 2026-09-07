@@ -1,30 +1,56 @@
 # 部署(deploy)
 
-流程/审批中台本地/单机全栈:PostgreSQL + Redis + Kafka(KRaft)+ server(:8300)+ admin(:8301)+ console(:8302)。
+流程/审批中台本地/单机全栈：`server(:8300) + admin(:8301) + console(:8302)`；PostgreSQL 16 与 Kafka 3.8 统一复用同级 `dev-infra`，不再重复启动公共组件。Redis 当前没有代码依赖，已取消预留容器。
 
 ## 一键起全栈
 
 ```bash
-cd deploy
+cd ../dev-infra
+./bin/dev-infra up postgres16 kafka38       # 首次先按该仓库 README 完成 init
+
+cd ../workflow-platform/deploy
 cp .env.example .env                     # 按需改端口/开关
-./compose.sh down --remove-orphans        # 自动加载 auth-platform 中央入口端口
+./scripts/init-dev-infra-resources.sh     # 首次幂等创建 database/role/topics
+./scripts/compose-preflight.sh            # 校验共享服务、网络和应用端口
 ./compose.sh up -d --build                # 首次构建镜像(in-Docker Maven,较慢)
 ./compose.sh ps
 curl -s localhost:${WORKFLOW_SERVER_PORT:-8300}/actuator/health   # {"status":"UP"}
 curl -i localhost:${WORKFLOW_UI_PORT:-8302}/healthz               # HTTP 204
 ```
 
+## 统一链路追踪
+
+需要查看 server、admin 及跨平台请求瀑布图时，先启动共享观测栈，再叠加观测文件：
+
+```bash
+cd ../../dev-infra && make marketing-obs
+cd ../workflow-platform/deploy
+./compose.sh -f docker-compose.yml -f compose.observability.yml up -d --build
+```
+
+两个后端分别使用 `workflow-platform-server`、`workflow-platform-admin` 服务名，复用共享 OpenTelemetry Java Agent 并向 `infra-otel-collector:4318` 发送 trace。Grafana 地址为 `http://127.0.0.1:3001`。本地默认全采样；通过 `.env` 的 `OTEL_TRACES_SAMPLER=traceidratio`、`OTEL_TRACES_SAMPLER_ARG=0.1` 降采样，或以 `OTEL_SDK_DISABLED=true` 停用。HTTP 与直接 Kafka 调用自动传播 W3C 上下文；outbox、DLQ 重放及长流程跨越持久化异步边界时会形成新 trace，需结合 `eventId/actionId/businessKey` 与审计日志关联。完整规则见同级 `dev-infra/docs/observability.md`。
+
 - 后端镜像:`deploy/Dockerfile` 多阶段(build 全 reactor → server/admin 各取可执行 jar)。构建上下文=仓库根(见根 `.dockerignore`)。
 - 前端镜像:`workflow-console/Dockerfile` 构建 Vite 产物并由 nginx 托管；`/api` 同源反代到 compose 服务 `server:8300`。
-- server/admin 连容器内 `postgres:5432`、`kafka:9092`;host 访问 Kafka 用 `:${WORKFLOW_KAFKA_HOST_PORT}`(默认 29092)。
+- server/admin 通过外部网络 `dev-infra` 连接 `infra-postgres16:5432`、`infra-kafka38:9092`。
+- 宿主机直接运行时，默认连接 `127.0.0.1:45432/workflow` 和 `127.0.0.1:49092`；端口以 `dev-infra/.env` 为准。
 - 内部服务端口继续由本项目 `.env` 管理；浏览器入口只由 `auth-platform/deploy/platform-ports.env` 的 `WORKFLOW_UI_PORT` 管理。
 
 ## 纪律与坑
 
-- **端口冲突**:若已在 host 用 `mvn spring-boot:run` 跑 server(:8300)或跑着 shadow 联调栈,勿同时 `compose up server`(会抢 :8300);浏览器入口只改 auth-platform 的中央注册表，冲突时先释放占用，不自动换端口。
-- **复用现有 PG/Redis**:compose 用固定 `container_name`(workflow-postgres/redis),已在跑则复用(数据卷 `workflow-pg-data` 保留);Flyway 幂等续跑迁移(baseline + V1–V5)。
-- **Kafka 独立**:本 compose 的 Kafka 用 `kafka:9092`(容器内)/`:29092`(host),与其它项目 :9092、shadow 临时 :9095 隔离。
-- 起前务必 `down --remove-orphans`(risk/auth/his 都踩过 docker-proxy 残留占端口)。
+- **端口冲突**：若已在 host 用 `mvn spring-boot:run` 跑 server(:8300)，勿同时 `compose up server`；预检会明确失败，不会自动换端口。
+- **资源隔离**：PostgreSQL 使用独立 database/role `workflow`；Kafka 使用 `workflow.*` topic 和 `workflow-server*` consumer group。不要对共享实例执行删库、`FLUSHALL` 或批量删 topic。
+- **启动顺序**：跨 Compose 不能使用 `depends_on`。先启动 `dev_infra`，再运行预检和本项目 Compose；应用启动失败会有限次重启。
+- **Redis**：首期正确性、缓存和限流代码均未引用 Redis，因此不连接共享 Redis，也不迁移旧 Redis 空实例。
+
+## 共享资源与迁移
+
+- 2026-09-05 已把旧 `workflow-postgres` 的 `workflow` 库迁到 `dev-infra` PostgreSQL；53 张 public 表逐表校验行数和内容哈希一致。
+- 迁移前备份保存在 `dev-infra/backups/workflow-platform/`（该目录不提交 Git），旧卷保留用于回滚。
+- 旧 Kafka 的四个 topic 均已过保留期（earliest offset 等于 latest offset），没有可复制记录；共享 Kafka 已存在五个 `workflow.*` topic，现有消费位点保持不变。
+- 旧 Redis 没有业务依赖，迁移时 `DBSIZE=0`，无需复制。旧 PostgreSQL/Kafka/Redis 容器只停止、不删除数据卷。
+
+回滚时先停止所有 workflow writer，再把 `WORKFLOW_DB_URL` 切回 `jdbc:postgresql://127.0.0.1:25432/workflow`，启动旧 PostgreSQL；Kafka 回滚前需单独核对共享集群中新产生的消息，禁止直接覆盖消费位点。
 
 ## 鉴权
 
@@ -38,13 +64,15 @@ WORKFLOW_OIDC_JWKS=https://sso.example.com/.well-known/jwks
 WORKFLOW_OIDC_AUDIENCE=workflow-platform
 WORKFLOW_TENANT_CLAIM=tenant_id
 WORKFLOW_KAFKA_TRUST_ENABLED=true
-WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=his-outpatient=his
-WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=his-outpatient=<至少32字节随机密钥的Base64URL>
+WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=his-outpatient=his,benefit-center=benefit-prod
+WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=his-outpatient=<Base64URL密钥>,benefit-center=<Base64URL密钥>,workflow-server=<Base64URL密钥>
 WORKFLOW_FLOWABLE_SCHEMA_UPDATE=false
 WORKFLOW_PG_PASSWORD=<强随机密码>
 ```
 
 `prod` 启动 guard 会拒绝关闭鉴权、缺 issuer/audience/tenant claim、缺 Kafka source→tenant allowlist/per-source HMAC 密钥、开启 Flowable 自动改表、开启试点 BPMN 自动部署或使用默认数据库密码。JWT 租户 claim 是 REST 可信来源；Kafka producer 必须对精确原始 JSON 计算 HMAC-SHA256 并发送 Base64URL `workflow-signature-v1` header。应用层 HMAC/allowlist 不能替代 broker SASL/TLS/ACL。详见 `docs/integration-guide.md` §4.3。
+
+每把解码后的 HMAC 密钥至少 32 字节。`workflow-server` 虽不是入站 tenant binding，也必须配置，因为平台需要用它签名 `workflow.action.requested.v1`；权益环境还要把 `WORKFLOW_BENEFIT_TENANT` 设为与 `benefit-center` binding 相同的 tenant。
 
 ## 监控与告警
 
@@ -92,9 +120,9 @@ compose 用固定 `container_name`/端口,不能直接 `--scale`;生产用 K8s D
 - **平台自有 `wf_*`**(process_link / inbox / outbox / dlq / task_authz_sync / deployment_audit / tenant_config):由 **Flyway** 版本化(`workflow-platform-core/.../db/migration/V*.sql`),应用启动时自动应用(baseline 既有 schema)。
 - **Flowable `ACT_*`**:dev 由引擎自建(`WORKFLOW_FLOWABLE_SCHEMA_UPDATE=true`);**生产置 `false`**,用固化的官方 DDL 初始化——`deploy/postgres/flowable-7.1.0/{engine,history}.sql`(锁定 7.1.0)。
 
-**干净库一键建表**:compose 把上述 Flowable DDL 挂到 postgres `docker-entrypoint-initdb.d`(仅空卷首次执行),应用启动再由 Flyway 建 `wf_*`。因此 `WORKFLOW_FLOWABLE_SCHEMA_UPDATE=false` 下全新库也能一次起好。
+**干净开发库建表**：先在共享 PostgreSQL 创建独立 `workflow` database/role；开发环境启动应用后，Flowable 创建 `ACT_*`，Flyway 创建 `wf_*`。`WORKFLOW_FLOWABLE_SCHEMA_UPDATE=false` 的生产式初始化需先人工执行固化 Flowable DDL，再启动应用，不能依赖共享 PostgreSQL 的 entrypoint。
 
-**迁移冒烟**(不依赖 Testcontainers,在运行中的 compose PG 上用 scratch 库):
+**迁移冒烟**(不依赖 Testcontainers,在 dev_infra PostgreSQL 上用进程专属 scratch 库):
 ```bash
 bash deploy/scripts/phase1-migration-smoke.sh   # 应用全部 V*.sql,校验 7 张 wf_ 表 + 唯一/偏唯一约束
 ```

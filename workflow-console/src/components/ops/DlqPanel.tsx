@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Alert, App, Button, Segmented, Space, Table, Typography } from 'antd'
+import { Alert, App, Button, Grid, Segmented, Space, Table, Tooltip, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import DetailDrawer from './DetailDrawer'
@@ -23,6 +23,8 @@ const fmt = (v: number | null) => (v ? new Date(v).toLocaleString('zh-CN') : '-'
 /** Kafka DLQ 死信:status 筛选 + 单条/批量重放(异步最终一致)+ payload 详情。全平台视角(不区分租户)。 */
 export default function DlqPanel() {
   const { message, modal } = App.useApp()
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.lg === false
   const [status, setStatus] = useState('NEW')
   const [detail, setDetail] = useState<{ title: string; content: string } | null>(null)
 
@@ -112,7 +114,7 @@ export default function DlqPanel() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="DLQ 为全平台视角(不区分租户);重放/批量重放均为异步最终一致,结果以列表刷新为准。仅显示前 100 条。"
+        message="DLQ 为全平台视角(不区分租户,不按流程过滤);重放/批量重放均为异步最终一致,结果以列表刷新为准。仅显示前 100 条。"
       />
       <Space style={{ marginBottom: 16 }} wrap>
         <Segmented
@@ -123,9 +125,16 @@ export default function DlqPanel() {
             { label: '已重放(REPLAYED)', value: 'REPLAYED' },
           ]}
         />
-        <Button danger onClick={confirmReplayAll} disabled={status !== 'NEW' || rows.length === 0} loading={replayAllMut.isPending}>
-          全部重放
-        </Button>
+        <Tooltip title={isMobile ? '请在桌面执行' : undefined}>
+          <Button
+            danger
+            onClick={confirmReplayAll}
+            disabled={isMobile || status !== 'NEW' || rows.length === 0}
+            loading={replayAllMut.isPending}
+          >
+            全部重放
+          </Button>
+        </Tooltip>
         <Button icon={<ReloadOutlined />} onClick={() => query.refetch()} loading={query.isFetching}>
           刷新
         </Button>

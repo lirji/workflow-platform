@@ -77,7 +77,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate Compose model
-        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config -q
+        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml -f deploy/compose.observability.yml config -q
       - name: Validate shell syntax
         run: |
           for f in deploy/scripts/*.sh; do bash -n "$f"; done

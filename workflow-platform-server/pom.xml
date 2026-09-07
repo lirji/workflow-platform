@@ -39,12 +39,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
-        <!-- Kafka Published Language:复用 his 现有 broker(9092),workflow.* 独立 topic -->
+        <!-- Kafka Published Language：复用 dev_infra Kafka 3.8，workflow.* 使用独立 topic。 -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
         </dependency>
-        <!-- 运行时数据库:独立 PostgreSQL 25432 -->
+        <!-- 运行时数据库：复用 dev_infra PostgreSQL 16 中的独立 workflow database/role。 -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>

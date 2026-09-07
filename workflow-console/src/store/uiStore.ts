@@ -5,7 +5,8 @@ import type { ReviewDecision } from '../api/types'
 export interface RecentReview {
   businessKey: string
   actionId: string
-  decision: ReviewDecision
+  decision: ReviewDecision | string
+  processDefinitionKey: string
   at: number
 }
 

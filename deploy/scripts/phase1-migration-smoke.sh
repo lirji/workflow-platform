@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# Phase 1 迁移冒烟:在运行中的 compose PG 上用 scratch 库验证 wf_* 迁移建表 + 幂等唯一 + WAITING_USER 偏唯一。
+# Phase 1 迁移冒烟：在 dev_infra PostgreSQL 上创建本次进程专属 scratch 库，
+# 验证 wf_* 迁移建表、幂等唯一与 WAITING_USER 偏唯一；退出时只删除该临时库。
 # 与项目既有 deploy/*-smoke.sh 约定一致(不依赖 Testcontainers)。
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MIGDIR="$ROOT/workflow-platform-core/src/main/resources/db/migration"
-CT=workflow-postgres
-DB=wf_smoke
+CT="${DEV_INFRA_POSTGRES_CONTAINER:-dev-infra-postgres16-1}"
+DB="wf_smoke_$$"
 PU=workflow
+ADMIN="$(docker exec "$CT" sh -lc 'printf %s "$POSTGRES_USER"')"
 PASS=0; FAIL=0
 ok(){ echo "  PASS: $1"; PASS=$((PASS+1)); }
 no(){ echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 psql_db(){ docker exec -i "$CT" psql -v ON_ERROR_STOP=1 -qtA -U "$PU" -d "$DB" "$@"; }
+cleanup(){ docker exec "$CT" psql -v ON_ERROR_STOP=1 -U "$ADMIN" -d postgres -c "DROP DATABASE IF EXISTS $DB;" >/dev/null; }
+trap cleanup EXIT
 
-echo "==> 重建 scratch 库 $DB"
-docker exec "$CT" psql -U "$PU" -d postgres -c "DROP DATABASE IF EXISTS $DB;" >/dev/null
-docker exec "$CT" psql -U "$PU" -d postgres -c "CREATE DATABASE $DB;" >/dev/null
+echo "==> 创建 scratch 库 $DB"
+docker exec "$CT" psql -v ON_ERROR_STOP=1 -U "$ADMIN" -d postgres -c "CREATE DATABASE $DB OWNER $PU;" >/dev/null
 
 echo "==> 应用全部迁移(V*.sql 按版本序)"
 APPLY_OK=1
@@ -56,9 +59,6 @@ else
 fi
 CNT=$(psql_db -c "SELECT count(*) FROM wf_process_link WHERE business_key='enc-3001';")
 [ "$CNT" = "2" ] && ok "enc-3001 共 2 条 link" || no "enc-3001 link 数=$CNT(期望2)"
-
-echo "==> 清理 scratch 库"
-docker exec "$CT" psql -U "$PU" -d postgres -c "DROP DATABASE IF EXISTS $DB;" >/dev/null
 
 echo "================  PASS=$PASS FAIL=$FAIL  ================"
 [ "$FAIL" = "0" ]

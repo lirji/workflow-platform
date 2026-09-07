@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import type { User } from 'oidc-client-ts'
 import { config } from '../config'
+import { workbenchTenant } from '../store/workbenchStore'
 import { userManager } from '../auth/oidcConfig'
 
 /** 空 baseURL → 相对路径 → dev vite proxy / prod nginx 同源反代到 workflow-platform-server:8300。 */
@@ -11,7 +12,7 @@ export const apiClient = axios.create({
 
 // 请求拦截(单点注入):租户头(试点单租户,Phase 3 后端从 JWT 派生后移除)+ 鉴权开启时附 Casdoor token。
 apiClient.interceptors.request.use(async (cfg) => {
-  cfg.headers['X-Workflow-Tenant'] = config.workflowTenant
+  cfg.headers['X-Workflow-Tenant'] = workbenchTenant()
   if (config.authEnabled) {
     const user = await userManager.getUser()
     if (user && !user.expired && user.access_token) {

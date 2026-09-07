@@ -40,6 +40,18 @@ export interface CompleteReviewResponse {
   status: 'PENDING_BUSINESS'
 }
 
+/** 通用人工任务办理。对应 protocol CompleteTaskRequest。outcome 由业务 BPMN 解释。 */
+export interface CompleteTaskRequest {
+  outcome: string
+  comment?: string | null
+  variables?: Record<string, unknown> | null
+  actorSub?: string | null
+  actorUsername?: string | null
+  actorDisplayName?: string | null
+}
+
+export type CompleteTaskResponse = CompleteReviewResponse
+
 /**
  * 流程实例视图(只读)。对应 protocol ProcessInstanceView。
  * phase ∈ WAITING_USER / WAITING_BUSINESS / COMPLETED / INCIDENT / CANCELLED(中台侧最终一致阶段)。

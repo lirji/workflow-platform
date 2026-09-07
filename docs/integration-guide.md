@@ -101,6 +101,15 @@ processInstanceId · taskId(落地时任务可能已结束,可空) · processDef
 | `FAILED_RETRYABLE` | 可重试失败 | 消费方 outbox 重发 |
 | `FAILED_FINAL` | 终态失败 | 进 incident / 人工处置，流程不自动通过 |
 
+### 当前内置流程契约
+
+| 流程 | tenant | businessKey / cycle | task / 候选组 | requested action | ACK message |
+|---|---|---|---|---|---|
+| `hisRxReview` | `his` | encounterId / review cycle | `pharmacistReview` / `PHARMACIST` | `RX_REVIEW_PASS`、`RX_REVIEW_REJECT` | `hisRxReviewApplied` |
+| `benefitSkuGoLive` | `WORKFLOW_BENEFIT_TENANT`，默认 `dev-tenant` | skuId / `tenant\|skuId\|skuVersion` | `skuGoLiveReview` / `BENEFIT_SKU_REVIEWER` | `SKU_GO_LIVE_APPROVE`、`SKU_GO_LIVE_REJECT` | `benefitSkuGoLiveApplied` |
+
+两条流程共用 v1 envelope、inbox/outbox 和 `WorkflowActionStatus`，但 action 与 ACK message 不能跨流程复用。权益接入时，`benefit-center` 必须出现在 source→tenant allowlist，平台与权益侧都要配置 `benefit-center` 和 `workflow-server` 的 HMAC key；broker 的 SASL/TLS/ACL 仍是独立门禁。
+
 ### `Actor` 快照
 
 ```
@@ -186,7 +195,7 @@ REST 层鉴权由 `workflow.security.enabled` 开关分期（与前端 `VITE_AUT
 - `tenant`:配置 `workflow.security.tenant-claim` 后，该 claim 是唯一可信来源；缺 claim 或请求头与 claim 不一致均返回 403。
 - 普通用户只能看到自己已认领或自己/所属组可候选的任务；只能给自己认领，且认领使用引擎原子操作；转办、委派、撤回只允许当前办理人。`ADMIN` 可执行全量任务运维。
 - `issuer`、标准时效与 `audience` 同时校验。`prod` profile 启动时会校验安全开关、issuer、audience、tenant claim、schema 与试点自动部署配置，不满足即拒绝启动。
-- Kafka 不经过 HTTP JWT：生产必须设置 `WORKFLOW_KAFKA_TRUST_ENABLED=true`、`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=source=tenant,...` 和 `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=source=<Base64URL密钥>,...`。每个绑定 source 以及中台出站 source `workflow-server` 的解码密钥至少 32 字节；producer 对最终发送的原始 JSON UTF-8 字节计算 HMAC-SHA256，并把 Base64URL 签名放入 `workflow-signature-v1` header。应用校验用于认证 source 声明和 tenant 授权，broker 仍必须启用 SASL/TLS 与 producer topic ACL。
+- Kafka 不经过 HTTP JWT：生产必须设置 `WORKFLOW_KAFKA_TRUST_ENABLED=true`、`WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS=source=tenant,...` 和 `WORKFLOW_KAFKA_SOURCE_SIGNING_KEYS=source=<Base64URL密钥>,...`。绑定只接受精确 pair，不支持 `*`；例如权益消息 `tenantId=dev-tenant` 必须包含 `benefit-center=dev-tenant`，只配 `benefit-center=benefit-center` 会在写 inbox 前拒绝，异常会同时给出 source 与 tenant。每个绑定 source 以及中台出站 source `workflow-server` 的解码密钥至少 32 字节；producer 对最终发送的原始 JSON UTF-8 字节计算 HMAC-SHA256，并把 Base64URL 签名放入 `workflow-signature-v1` header。应用校验用于认证 source 声明和 tenant 授权，broker 仍必须启用 SASL/TLS 与 producer topic ACL。
 
 **服务端安全与 Kafka 信任配置**(环境变量):
 
@@ -264,7 +273,7 @@ public void onActionRequested(String message) {
 - [ ] 所有 REST 调用带 `X-Workflow-Tenant`；配 `workflow.client.*`（若用 SDK）。
 - [ ] 生产环境(`workflow.security.enabled=true`):REST 调用额外带 `Authorization: Bearer <Casdoor JWT>`（见 §4.3）。
 - [ ] 生产 Kafka：把消费方逻辑 source 登记到 `WORKFLOW_KAFKA_SOURCE_TENANT_BINDINGS`，并配置 broker SASL/TLS/topic producer ACL。
-- [ ] 待办 UI：接 workflow-console，或自建接 REST。
+- [ ] 待办 UI：接 workflow-console，或自建接 REST。控制台会话的 `X-Workflow-Tenant`（本机构建由 `VITE_WORKFLOW_TENANT` 提供）必须等于要办理的实例 tenant；当前前端不提供运行时租户切换，修改构建变量后要重建镜像。
 
 ## 7. 参考实现与约束
 

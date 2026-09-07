@@ -13,7 +13,7 @@ export interface NavItem {
 /** 侧边菜单 + 路由的单一配置源。 */
 export const NAV: NavItem[] = [
   { path: '/tasks', label: '待办中心', icon: <ProfileOutlined />, group: '流程办理' },
-  { path: '/process/hisRxReview', label: '流程轨迹', icon: <ApartmentOutlined />, group: '流程办理' },
+  { path: '/process', label: '流程轨迹', icon: <ApartmentOutlined />, group: '流程办理' },
   { path: '/ops', label: '运维面板', icon: <ToolOutlined />, group: '系统运维', adminOnly: true },
   { path: '/designer', label: '流程设计器', icon: <EditOutlined />, group: '系统运维', adminOnly: true },
 ]
